@@ -3,18 +3,13 @@
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
   <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>600</width>
-    <height>400</height>
-   </rect>
+   <rect><x>0</x><y>0</y><width>600</width><height>500</height></rect>
   </property>
   <property name="windowTitle">
    <string>Pixel Art Color Processor</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
+   <layout class="QVBoxLayout" name="verticalLayout" stretch="0,1,0">
     <item>
      <widget class="QPushButton" name="loadButton">
       <property name="text">
@@ -31,16 +26,35 @@
        <set>Qt::AlignCenter</set>
       </property>
       <property name="scaledContents">
-       <bool>true</bool>
+       <bool>false</bool>
       </property>
       <property name="minimumSize">
-       <size>
-        <width>200</width>
-        <height>200</height>
-       </size>
+       <size><width>200</width><height>200</height></size>
       </property>
       <property name="frameShape">
        <enum>QFrame::Box</enum>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QSlider" name="zoomSlider">
+      <property name="minimum">
+       <number>1</number>
+      </property>
+      <property name="maximum">
+       <number>10</number>
+      </property>
+      <property name="value">
+       <number>1</number>
+      </property>
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <property name="tickInterval">
+       <number>1</number>
+      </property>
+      <property name="tickPosition">
+       <enum>QSlider::TicksBelow</enum>
       </property>
      </widget>
     </item>
