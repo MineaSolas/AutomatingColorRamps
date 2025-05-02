@@ -5,6 +5,8 @@ from PyQt6.QtGui import QPixmap, QImage, QColor
 from PyQt6.QtCore import Qt
 import numpy as np
 from PIL import Image
+
+from ui.flow_layout import FlowLayout
 from ui.main_window import Ui_MainWindow
 
 
@@ -92,12 +94,14 @@ class ImageViewer(QMainWindow):
         self.display_color_palette(unique_colors)
 
     def display_color_palette(self, colors):
+        # Remove existing palette if any
         if hasattr(self, "palette_widget"):
             self.ui.verticalLayout.removeWidget(self.palette_widget)
             self.palette_widget.deleteLater()
 
         self.palette_widget = QWidget()
-        layout = QGridLayout()
+        layout = FlowLayout(spacing=5)
+        layout.setContentsMargins(0, 0, 0, 0)
         self.palette_widget.setLayout(layout)
         self.palette_labels = {}
 
@@ -106,13 +110,12 @@ class ImageViewer(QMainWindow):
             label = QLabel()
             label.setFixedSize(40, 40)
             label.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
-            label.setToolTip(f"RGB: ({r}, {g}, {b})\nHEX: #{r:02X}{g:02X}{b:02X}")
 
             label.enterEvent = lambda event, col=color: self.highlight_color(col)
             label.leaveEvent = lambda event: self.clear_highlight()
 
             self.palette_labels[color] = label
-            layout.addWidget(label, i // 20, i % 20)
+            layout.addWidget(label)
 
         self.ui.verticalLayout.addWidget(self.palette_widget)
 
@@ -168,7 +171,7 @@ class ImageViewer(QMainWindow):
         for col, label in self.palette_labels.items():
             if col[:3] == target_rgb:
                 label.setStyleSheet(
-                    f"background-color: rgba{col}; border: 3px solid {highlight_css};"
+                    f"background-color: rgba{col}; border: 5px solid {highlight_css};"
                 )
             else:
                 label.setStyleSheet(
