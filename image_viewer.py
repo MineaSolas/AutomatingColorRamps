@@ -123,11 +123,16 @@ class ImageViewer(QMainWindow):
 
         # Highlight palette
         target_rgb = tuple(int(c * 255) for c in (r, g, b))
+        highlight_css = f"rgb({highlight_color.red()}, {highlight_color.green()}, {highlight_color.blue()})"
         for col, label in self.palette_labels.items():
             if col[:3] == target_rgb:
-                label.setStyleSheet(f"background-color: rgba{col}; border: 3px solid yellow;")
+                label.setStyleSheet(
+                    f"background-color: rgba{col}; border: 3px solid {highlight_css};"
+                )
             else:
-                label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
+                label.setStyleSheet(
+                    f"background-color: rgba{col}; border: 1px solid #000;"
+                )
 
         # Highlight matching pixels with solid highlight color
         image = self.original_pixmap.toImage()
