@@ -1,5 +1,4 @@
 import colorsys
-
 from PyQt6.QtWidgets import QMainWindow, QFileDialog, QWidget, QGridLayout, QLabel
 from PyQt6.QtGui import QPixmap, QImage, QColor
 from PyQt6.QtCore import Qt
@@ -115,13 +114,12 @@ class ImageViewer(QMainWindow):
         r, g, b = [c / 255.0 for c in color[:3]]
         h, s, v = colorsys.rgb_to_hsv(r, g, b)
 
-        # Rotate hue by 180° (complement), clamp sat/value to make it vivid
-        h = (h + 0.5) % 1.0
-        s = max(s, 0.8)
-        v = max(v, 0.9)
+        if h < 0.125 or h > 0.7:
+            highlight_rgb = (0, 255, 255)
+        else:
+            highlight_rgb = (255, 0, 0)
 
-        r2, g2, b2 = [int(c * 255) for c in colorsys.hsv_to_rgb(h, s, v)]
-        highlight_color = QColor(r2, g2, b2)
+        highlight_color = QColor(*highlight_rgb)
 
         # Highlight palette
         target_rgb = tuple(int(c * 255) for c in (r, g, b))
