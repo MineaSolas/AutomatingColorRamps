@@ -7,6 +7,8 @@ from PyQt6.QtCore import Qt
 import numpy as np
 from PIL import Image
 
+from clickable_image import ClickableImage
+from color_utils import get_highlight_color, get_text_descriptions
 from ui.main_window import Ui_MainWindow
 from palette import ColorPalette
 
@@ -18,49 +20,48 @@ class ImageViewer(QMainWindow):
         self.ui.setupUi(self)
         self.resize(1200, 800)
 
+        self.original_pixmap = None
+
         self.selected_color = None
         self.selected_border_color = "red"
         self.hovered_color = None
 
-        self.color_palette = ColorPalette(self)
+        self.ui.loadButton.clicked.connect(self.load_image)
+
+        self.ui.zoomSlider.valueChanged.connect(self.update_image)
+        self.ui.zoomLabel.setMinimumWidth(50)
+        self.ui.zoomLabel.setStyleSheet("padding-bottom: 8px;")
 
         # Replace default imageLabel
         self.ui.verticalLayout.removeWidget(self.ui.imageLabel)
         self.ui.imageLabel.deleteLater()
-        self.ui.imageLabel = ClickableImageLabel(viewer=self)
+        self.ui.imageLabel = ClickableImage(viewer=self)
         self.ui.verticalLayout.insertWidget(1, self.ui.imageLabel)
 
-        self.ui.loadButton.clicked.connect(self.load_image)
-
-        self.ui.zoomSlider.valueChanged.connect(self.update_zoom)
-        self.ui.zoomLabel.setMinimumWidth(50)
-        self.ui.zoomLabel.setStyleSheet("padding-bottom: 8px;")
-
-        self.original_pixmap = None
-
+        # Setup color details overlay widget
+        self.colorDetails = QWidget(self.ui.imageLabel)
+        self.overlayLayout = QVBoxLayout(self.colorDetails)
+        self.colorSwatch = QLabel()
+        self.colorTextRGB = QLabel("RGB: -")
+        self.colorTextHEX = QLabel("HEX: -")
+        self.colorTextHSV = QLabel("HSV: -")
         self.init_color_details_widget()
 
+        self.color_palette = ColorPalette(self)
         self.ui.verticalLayout.addWidget(self.color_palette)
 
     def init_color_details_widget(self):
-        self.colorDetails = QWidget(self.ui.imageLabel)
         self.colorDetails.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.colorDetails.setStyleSheet("background-color: rgba(255, 255, 255, 180); border: 1px solid #999;")
         self.colorDetails.move(10, 10)
         self.colorDetails.resize(180, 120)
 
-        self.overlayLayout = QVBoxLayout(self.colorDetails)
         self.overlayLayout.setContentsMargins(5, 5, 5, 5)
 
-        self.colorSwatch = QLabel()
         self.colorSwatch.setFixedHeight(40)
         self.colorSwatch.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.colorSwatch.setStyleSheet("background-color: #ffffff; border: 1px solid #000;")
         self.overlayLayout.addWidget(self.colorSwatch)
-
-        self.colorTextRGB = QLabel("RGB: -")
-        self.colorTextHEX = QLabel("HEX: -")
-        self.colorTextHSV = QLabel("HSV: -")
 
         for label in (self.colorTextRGB, self.colorTextHEX, self.colorTextHSV):
             label.setStyleSheet("font-size: 10pt;")
@@ -71,10 +72,10 @@ class ImageViewer(QMainWindow):
         if file_name:
             self.original_pixmap = QPixmap(file_name)
             self.set_initial_fit_zoom()
-            self.update_zoom()
+            self.update_image()
             self.extract_unique_colors()
 
-    def update_zoom(self):
+    def update_image(self):
         zoom = self.get_zoom_factor()
         self.ui.zoomLabel.setText(f"{int(zoom * 100)}%")
         if self.original_pixmap:
@@ -122,7 +123,7 @@ class ImageViewer(QMainWindow):
 
     def image_mouse_move(self, event):
         color = self.get_image_color_at_pos(event.position().toPoint())
-        self.show_color_info(color, is_hover=True) if color else self.clear_highlight()
+        self.show_color_info(color, is_hover=True) if color else self.clear_hover()
 
     def image_mouse_click(self, event):
         color = self.get_image_color_at_pos(event.position().toPoint())
@@ -135,7 +136,7 @@ class ImageViewer(QMainWindow):
             self.hovered_color = color
         else:
             self.selected_color = color
-            self.selected_border_color = self.get_border_color_from_hue(color)
+            self.selected_border_color = get_highlight_color(color)
             self.hovered_color = None
 
         active_color = self.hovered_color if is_hover else self.selected_color
@@ -144,26 +145,23 @@ class ImageViewer(QMainWindow):
         target_rgb = tuple(int(c * 255) for c in (r, g, b))
         highlight_color = QColor(*(0, 255, 255) if h < 0.125 or h > 0.7 else (255, 0, 0))
 
-        self.color_palette.update_borders(self.selected_color, self.hovered_color, self.selected_border_color, self.get_border_color_from_hue)
+        self.color_palette.update_borders(self.selected_color, self.hovered_color, self.selected_border_color)
 
         if is_hover:
-            self._update_image_highlight(target_rgb, highlight_color)
+            self.update_image_highlight(target_rgb, highlight_color)
         else:
-            self.update_zoom()
+            self.update_image()
 
-        self._update_overlay_text((r * 255, g * 255, b * 255))
+        self.update_overlay_text((r * 255, g * 255, b * 255))
 
-    def _update_overlay_text(self, color):
-        r, g, b = [int(c) for c in color[:3]]
-        h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
-        h_deg, s_pct, v_pct = int(h * 360), int(s * 100), int(v * 100)
-        hex_str = f"#{r:02X}{g:02X}{b:02X}"
-        self.colorSwatch.setStyleSheet(f"background-color: {hex_str}; border: 1px solid #000;")
-        self.colorTextRGB.setText(f"RGB: ({r}, {g}, {b})")
-        self.colorTextHEX.setText(f"HEX: {hex_str}")
-        self.colorTextHSV.setText(f"HSV: ({h_deg}°, {s_pct}%, {v_pct}%)")
+    def update_overlay_text(self, color):
+        info = get_text_descriptions(color)
+        self.colorSwatch.setStyleSheet(f"background-color: {info['hex_raw']}; border: 1px solid #000;")
+        self.colorTextRGB.setText(info["rgb"])
+        self.colorTextHEX.setText(info["hex"])
+        self.colorTextHSV.setText(info["hsv"])
 
-    def _update_image_highlight(self, target_rgb, highlight_color):
+    def update_image_highlight(self, target_rgb, highlight_color):
         image = self.original_pixmap.toImage()
         highlighted = QImage(image)
         for x in range(image.width()):
@@ -178,33 +176,20 @@ class ImageViewer(QMainWindow):
         )
         self.ui.imageLabel.setPixmap(scaled_pixmap)
 
-    @staticmethod
-    def get_border_color_from_hue(color):
-        r, g, b = [c / 255.0 for c in color[:3]]
-        h, _, _ = colorsys.rgb_to_hsv(r, g, b)
-        return "cyan" if h < 0.125 or h > 0.7 else "red"
-
-    def clear_highlight(self):
+    def clear_hover(self):
         self.hovered_color = None
         if self.selected_color:
             self.show_color_info(self.selected_color, is_hover=False)
         else:
-            self.update_zoom()
+            self.update_image()
             self.reset_color_details()
 
     def clear_selection(self):
         self.selected_color = None
         self.hovered_color = None
-        self.update_zoom()
-        self.clear_highlight()
+        self.update_image()
+        self.clear_hover()
         self.reset_color_details()
-
-        self.color_palette.update_borders(
-            self.selected_color,
-            self.hovered_color,
-            None,
-            self.get_border_color_from_hue
-        )
 
     def reset_color_details(self):
         self.colorSwatch.setStyleSheet("background-color: #ffffff; border: 1px solid #000;")
@@ -212,19 +197,8 @@ class ImageViewer(QMainWindow):
         self.colorTextHEX.setText("HEX: -")
         self.colorTextHSV.setText("HSV: -")
 
-class ClickableImageLabel(QLabel):
-    def __init__(self, viewer, parent=None):
-        super().__init__(parent)
-        self.viewer = viewer
-        self.setMouseTracking(True)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.setMinimumSize(1, 1)
-        self.setScaledContents(False)
-        self.setObjectName("imageLabel")
-
-    def mousePressEvent(self, event):
-        self.viewer.image_mouse_click(event)
-
-    def mouseMoveEvent(self, event):
-        self.viewer.image_mouse_move(event)
+        self.color_palette.update_borders(
+            self.selected_color,
+            self.hovered_color,
+            None
+        )

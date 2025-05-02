@@ -1,5 +1,7 @@
 from PyQt6.QtWidgets import QLabel, QWidget, QVBoxLayout
 from PyQt6.QtCore import Qt
+
+from color_utils import get_highlight_color
 from ui.flow_layout import FlowLayout
 
 
@@ -18,7 +20,7 @@ class ColorLabel(QLabel):
         self.viewer.show_color_info(self.color, is_hover=True)
 
     def leaveEvent(self, event):
-        self.viewer.clear_highlight()
+        self.viewer.clear_hover()
 
 
 class ColorPalette(QWidget):
@@ -46,13 +48,13 @@ class ColorPalette(QWidget):
             label.deleteLater()
         self.labels.clear()
 
-    def update_borders(self, selected_color, hovered_color, selected_border_color, get_border_color_from_hue):
+    def update_borders(self, selected_color, hovered_color, selected_border_color):
         for color, label in self.labels.items():
             is_selected = selected_color and color[:3] == selected_color[:3]
             is_hovered = hovered_color and color[:3] == hovered_color[:3]
 
             if is_hovered:
-                border_color = get_border_color_from_hue(color)
+                border_color = get_highlight_color(color)
                 label.setStyleSheet(f"background-color: rgba{color}; border: 4px solid {border_color};")
             elif is_selected:
                 label.setStyleSheet(f"background-color: rgba{color}; border: 6px solid {selected_border_color};")
