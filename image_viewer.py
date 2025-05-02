@@ -1,3 +1,5 @@
+import colorsys
+
 from PyQt6.QtWidgets import QMainWindow, QFileDialog, QWidget, QGridLayout, QLabel
 from PyQt6.QtGui import QPixmap, QImage, QColor
 from PyQt6.QtCore import Qt
@@ -109,37 +111,44 @@ class ImageViewer(QMainWindow):
         else:
             self.clear_highlight()
 
+    @staticmethod
+    def hue_distance(h1, h2):
+        """Return minimal distance between two hue angles (0.0 - 1.0)"""
+        d = abs(h1 - h2)
+        return min(d, 1.0 - d)
+
     def highlight_color(self, color):
-        # Highlight palette squares
+        r, g, b = [c / 255.0 for c in color[:3]]
+        h, s, v = colorsys.rgb_to_hsv(r, g, b)  # hue in range 0–1
+
+        # Decide highlight color based on which hue it's closer to
+        red_hue = 0.0  # red = 0°
+        cyan_hue = 0.5  # cyan = 180°
+        if self.hue_distance(h, red_hue) < self.hue_distance(h, cyan_hue):
+            highlight_rgb = (0, 255, 255)  # use cyan
+        else:
+            highlight_rgb = (255, 0, 0)  # use red
+
+        highlight_color = QColor(*highlight_rgb)
+
+        # Update palette square styles
+        target_rgb = tuple(int(c * 255) for c in (r, g, b))
         for col, label in self.palette_labels.items():
-            if col[:3] == color[:3]:
+            if col[:3] == target_rgb:
                 label.setStyleSheet(f"background-color: rgba{col}; border: 3px solid yellow;")
             else:
                 label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
 
-        # Compute contrast color
-        r, g, b = color[:3]
-        luminance = 0.299 * r + 0.587 * g + 0.114 * b
-        contrast_color = QColor(0, 0, 0) if luminance > 186 else QColor(255, 255, 255)
-
-        # Create a highlighted version of the image
+        # Highlight pixels in image
         image = self.original_pixmap.toImage()
         highlighted = QImage(image)
 
         for x in range(image.width()):
             for y in range(image.height()):
                 pix = image.pixelColor(x, y)
-                if (pix.red(), pix.green(), pix.blue()) == (r, g, b):
-                    # blend the pixel with contrast color using 50% alpha overlay
-                    blended = QColor(
-                        (pix.red() + contrast_color.red()) // 2,
-                        (pix.green() + contrast_color.green()) // 2,
-                        (pix.blue() + contrast_color.blue()) // 2,
-                        pix.alpha()
-                    )
-                    highlighted.setPixelColor(x, y, blended)
+                if (pix.red(), pix.green(), pix.blue()) == target_rgb:
+                    highlighted.setPixelColor(x, y, highlight_color)
 
-        # Show highlighted image
         pixmap = QPixmap.fromImage(highlighted)
         zoom = self.ui.zoomSlider.value()
         scaled_pixmap = pixmap.scaled(
