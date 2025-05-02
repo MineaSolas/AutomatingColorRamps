@@ -45,7 +45,6 @@ class ImageViewer(QMainWindow):
                 transformMode=Qt.TransformationMode.FastTransformation
             )
             self.ui.imageLabel.setPixmap(scaled_pixmap)
-            self.ui.imageLabel.resize(scaled_pixmap.size())
 
     def extract_unique_colors(self):
         if not self.original_pixmap:
@@ -112,8 +111,8 @@ class ImageViewer(QMainWindow):
         pixmap_height = self.original_pixmap.height() * zoom
 
         # Calculate margins (image may be centered inside QLabel)
-        offset_x = (label_width - pixmap_width) // 2 if label_width > pixmap_width else 0
-        offset_y = (label_height - pixmap_height) // 2 if label_height > pixmap_height else 0
+        offset_x = (label_width - pixmap_width) // 2
+        offset_y = (label_height - pixmap_height) // 2
 
         # Coordinates inside the image
         x = (mouse_pos.x() - offset_x) // zoom
