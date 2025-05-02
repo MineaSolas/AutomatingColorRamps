@@ -19,6 +19,8 @@ class ImageViewer(QMainWindow):
 
         self.ui.loadButton.clicked.connect(self.load_image)
         self.ui.zoomSlider.valueChanged.connect(self.update_zoom)
+        self.ui.zoomLabel.setMinimumWidth(50)
+        self.ui.zoomLabel.setStyleSheet("padding-bottom: 8px;")
 
         self.original_pixmap = None
         self.ui.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -41,7 +43,7 @@ class ImageViewer(QMainWindow):
         self.colorSwatch = QLabel()
         self.colorSwatch.setFixedHeight(30)
         self.colorSwatch.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.colorSwatch.setStyleSheet("background-color: #000; border: 1px solid #000;")
+        self.colorSwatch.setStyleSheet("background-color: #ffffff; border: 1px solid #000;")
         self.overlayLayout.addWidget(self.colorSwatch)
 
         self.colorTextRGB = QLabel("RGB: -")
@@ -65,14 +67,20 @@ class ImageViewer(QMainWindow):
             self.extract_unique_colors()
 
     def update_zoom(self):
+        zoom = self.get_zoom_factor()
+        self.ui.zoomLabel.setText(f"{int(zoom * 100)}%")
+
         if self.original_pixmap:
-            zoom = self.ui.zoomSlider.value()
             scaled_pixmap = self.original_pixmap.scaled(
-                self.original_pixmap.width() * zoom,
-                self.original_pixmap.height() * zoom,
-                transformMode=Qt.TransformationMode.FastTransformation
+                int(self.original_pixmap.width() * zoom),
+                int(self.original_pixmap.height() * zoom),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.FastTransformation
             )
             self.ui.imageLabel.setPixmap(scaled_pixmap)
+
+    def get_zoom_factor(self):
+        return 1.16 ** (self.ui.zoomSlider.value() - 20)
 
     def extract_unique_colors(self):
         if not self.original_pixmap:
@@ -135,7 +143,7 @@ class ImageViewer(QMainWindow):
         label_height = label.height()
 
         # Get the scaled pixmap size
-        zoom = self.ui.zoomSlider.value()
+        zoom = self.get_zoom_factor()
         pixmap_width = self.original_pixmap.width() * zoom
         pixmap_height = self.original_pixmap.height() * zoom
 
@@ -190,10 +198,10 @@ class ImageViewer(QMainWindow):
 
         # Show
         pixmap = QPixmap.fromImage(highlighted)
-        zoom = self.ui.zoomSlider.value()
+        zoom = self.get_zoom_factor()
         scaled_pixmap = pixmap.scaled(
-            pixmap.width() * zoom,
-            pixmap.height() * zoom,
+            int(pixmap.width() * zoom),
+            int(pixmap.height() * zoom),
             transformMode=Qt.TransformationMode.FastTransformation
         )
         self.ui.imageLabel.setPixmap(scaled_pixmap)
