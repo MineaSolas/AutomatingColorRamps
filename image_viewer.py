@@ -187,6 +187,8 @@ class ImageViewer(QMainWindow):
         color = self.get_image_color_at_pos(event.position().toPoint())
         if color:
             self.show_color_info(color, is_hover=False)
+        else:
+            self.clear_selection()
 
     def show_color_info(self, color, is_hover=False):
         if is_hover:
@@ -264,7 +266,7 @@ class ImageViewer(QMainWindow):
             self.show_color_info(self.selected_color, is_hover=False)
         else:
             self.update_zoom()
-            self.colorSwatch.setStyleSheet("background-color: #000; border: 1px solid #000;")
+            self.colorSwatch.setStyleSheet("background-color: #ffffff; border: 1px solid #000;")
             self.colorTextRGB.setText("RGB: -")
             self.colorTextHEX.setText("HEX: -")
             self.colorTextHSV.setText("HSV: -")
@@ -275,6 +277,18 @@ class ImageViewer(QMainWindow):
                 label.setStyleSheet(f"background-color: rgba{col}; border: 3px solid red;")
             else:
                 label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
+
+    def clear_selection(self):
+        self.selected_color = None
+        self.hovered_color = None
+        self.update_zoom()
+        self.clear_highlight()
+
+        self.colorSwatch.setStyleSheet("background-color: #ffffff; border: 1px solid #000;")
+        self.colorTextRGB.setText("RGB: -")
+        self.colorTextHEX.setText("HEX: -")
+        self.colorTextHSV.setText("HSV: -")
+
 
 class ColorLabel(QLabel):
     def __init__(self, color, viewer, parent=None):
