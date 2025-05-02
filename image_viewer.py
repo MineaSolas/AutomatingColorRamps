@@ -15,6 +15,7 @@ class ImageViewer(QMainWindow):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+        self.resize(1200, 800)
 
         self.ui.loadButton.clicked.connect(self.load_image)
         self.ui.zoomSlider.valueChanged.connect(self.update_zoom)
