@@ -1,5 +1,5 @@
 import colorsys
-from PyQt6.QtWidgets import QMainWindow, QFileDialog, QWidget, QGridLayout, QLabel
+from PyQt6.QtWidgets import QMainWindow, QFileDialog, QWidget, QGridLayout, QLabel, QSizePolicy
 from PyQt6.QtGui import QPixmap, QImage, QColor
 from PyQt6.QtCore import Qt
 import numpy as np
@@ -17,6 +17,8 @@ class ImageViewer(QMainWindow):
         self.ui.zoomSlider.valueChanged.connect(self.update_zoom)
 
         self.original_pixmap = None
+        self.ui.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.ui.imageLabel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.ui.imageLabel.setScaledContents(False)
 
         self.ui.imageLabel.setMouseTracking(True)
@@ -99,32 +101,31 @@ class ImageViewer(QMainWindow):
         if not pixmap:
             return
 
-        # Get the size of the QLabel and the pixmap inside it
-        label_size = label.size()
-        pixmap_size = pixmap.size()
+        # Mouse position relative to the QLabel
+        mouse_pos = event.position().toPoint()
+        label_width = label.width()
+        label_height = label.height()
 
-        # Get cursor position relative to QLabel
-        pos = event.position().toPoint()
+        # Get the scaled pixmap size
+        zoom = self.ui.zoomSlider.value()
+        pixmap_width = self.original_pixmap.width() * zoom
+        pixmap_height = self.original_pixmap.height() * zoom
 
-        # Adjust for scaling (centered image)
-        offset_x = max((label_size.width() - pixmap_size.width()) // 2, 0)
-        offset_y = max((label_size.height() - pixmap_size.height()) // 2, 0)
+        # Calculate margins (image may be centered inside QLabel)
+        offset_x = (label_width - pixmap_width) // 2 if label_width > pixmap_width else 0
+        offset_y = (label_height - pixmap_height) // 2 if label_height > pixmap_height else 0
 
-        x = pos.x() - offset_x
-        y = pos.y() - offset_y
+        # Coordinates inside the image
+        x = (mouse_pos.x() - offset_x) // zoom
+        y = (mouse_pos.y() - offset_y) // zoom
 
-        if 0 <= x < pixmap_size.width() and 0 <= y < pixmap_size.height():
-            # Map back to original image size
-            img_x = int(x * self.original_pixmap.width() / pixmap_size.width())
-            img_y = int(y * self.original_pixmap.height() / pixmap_size.height())
-
-            if 0 <= img_x < self.original_pixmap.width() and 0 <= img_y < self.original_pixmap.height():
-                image = self.original_pixmap.toImage()
-                color = image.pixelColor(img_x, img_y).getRgb()
-                self.highlight_color(color)
-                return
-
-        self.clear_highlight()
+        # Validate coordinates
+        if 0 <= x < self.original_pixmap.width() and 0 <= y < self.original_pixmap.height():
+            image = self.original_pixmap.toImage()
+            color = image.pixelColor(int(x), int(y)).getRgb()
+            self.highlight_color(color)
+        else:
+            self.clear_highlight()
 
     def highlight_color(self, color):
         r, g, b = [c / 255.0 for c in color[:3]]
