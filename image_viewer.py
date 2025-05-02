@@ -1,5 +1,6 @@
 import colorsys
-from PyQt6.QtWidgets import QMainWindow, QFileDialog, QWidget, QGridLayout, QLabel, QSizePolicy
+from PyQt6.QtWidgets import QMainWindow, QFileDialog, QWidget, QGridLayout, QLabel, QSizePolicy, QHBoxLayout, \
+    QVBoxLayout
 from PyQt6.QtGui import QPixmap, QImage, QColor
 from PyQt6.QtCore import Qt
 import numpy as np
@@ -23,6 +24,30 @@ class ImageViewer(QMainWindow):
 
         self.ui.imageLabel.setMouseTracking(True)
         self.ui.imageLabel.mouseMoveEvent = self.image_mouse_move
+
+        # Create overlay widget on top-left of imageLabel
+        self.colorOverlay = QWidget(self.ui.imageLabel)
+        self.colorOverlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.colorOverlay.setStyleSheet("background-color: rgba(255, 255, 255, 180); border: 1px solid #999;")
+        self.colorOverlay.move(10, 10)
+        self.colorOverlay.resize(180, 120)  # increased height to fit all lines
+
+        self.overlayLayout = QVBoxLayout(self.colorOverlay)
+        self.overlayLayout.setContentsMargins(5, 5, 5, 5)
+
+        self.colorSwatch = QLabel()
+        self.colorSwatch.setFixedHeight(30)
+        self.colorSwatch.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.colorSwatch.setStyleSheet("background-color: #000; border: 1px solid #000;")
+        self.overlayLayout.addWidget(self.colorSwatch)
+
+        self.colorTextRGB = QLabel("RGB: -")
+        self.colorTextHEX = QLabel("HEX: -")
+        self.colorTextHSV = QLabel("HSV: -")
+
+        for label in (self.colorTextRGB, self.colorTextHEX, self.colorTextHSV):
+            label.setStyleSheet("font-size: 10pt;")
+            self.overlayLayout.addWidget(label)
 
     def load_image(self):
         file_name, _ = QFileDialog.getOpenFileName(
@@ -79,7 +104,7 @@ class ImageViewer(QMainWindow):
         for i, color in enumerate(colors):
             r, g, b, a = color
             label = QLabel()
-            label.setFixedSize(20, 20)
+            label.setFixedSize(40, 40)
             label.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
             label.setToolTip(f"RGB: ({r}, {g}, {b})\nHEX: #{r:02X}{g:02X}{b:02X}")
 
@@ -169,11 +194,30 @@ class ImageViewer(QMainWindow):
         )
         self.ui.imageLabel.setPixmap(scaled_pixmap)
 
+        r, g, b = color[:3]
+        h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+        h_deg = int(h * 360)
+        s_pct = int(s * 100)
+        v_pct = int(v * 100)
+        hex_str = f"#{r:02X}{g:02X}{b:02X}"
+
+        self.colorSwatch.setStyleSheet(f"background-color: {hex_str}; border: 1px solid #000;")
+        self.colorTextRGB.setText(f"RGB: ({r}, {g}, {b})")
+        self.colorTextHEX.setText(f"HEX: {hex_str}")
+        self.colorTextHSV.setText(f"HSV: ({h_deg}°, {s_pct}%, {v_pct}%)")
+
     def clear_highlight(self):
         self.update_zoom()  # Resets the image display
 
         for col, label in self.palette_labels.items():
             label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
+
+        self.colorSwatch.setStyleSheet("background-color: #ffffff; border: 1px solid #000;")
+        self.colorTextRGB.setText("RGB: -")
+        self.colorTextHEX.setText("HEX: -")
+        self.colorTextHSV.setText("HSV: -")
+
+
 
 
 
