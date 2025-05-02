@@ -18,6 +18,9 @@ class ImageViewer(QMainWindow):
         self.original_pixmap = None
         self.ui.imageLabel.setScaledContents(False)
 
+        self.ui.imageLabel.setMouseTracking(True)
+        self.ui.imageLabel.mouseMoveEvent = self.image_mouse_move
+
     def load_image(self):
         file_name, _ = QFileDialog.getOpenFileName(
             self,
@@ -62,7 +65,6 @@ class ImageViewer(QMainWindow):
         self.display_color_palette(unique_colors)
 
     def display_color_palette(self, colors):
-        # Remove existing palette if any
         if hasattr(self, "palette_widget"):
             self.ui.verticalLayout.removeWidget(self.palette_widget)
             self.palette_widget.deleteLater()
@@ -70,14 +72,77 @@ class ImageViewer(QMainWindow):
         self.palette_widget = QWidget()
         layout = QGridLayout()
         self.palette_widget.setLayout(layout)
+        self.palette_labels = {}
 
         for i, color in enumerate(colors):
             r, g, b, a = color
             label = QLabel()
             label.setFixedSize(20, 20)
             label.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
+            label.setToolTip(f"RGB: ({r}, {g}, {b})\nHEX: #{r:02X}{g:02X}{b:02X}")
+
+            label.enterEvent = lambda event, col=color: self.highlight_color(col)
+            label.leaveEvent = lambda event: self.clear_highlight()
+
+            self.palette_labels[color] = label
             layout.addWidget(label, i // 20, i % 20)
 
         self.ui.verticalLayout.addWidget(self.palette_widget)
+
+    def image_mouse_move(self, event):
+        if not self.original_pixmap:
+            return
+
+        label_pos = event.position().toPoint()
+        scaled_pixmap = self.ui.imageLabel.pixmap()
+        if not scaled_pixmap:
+            return
+
+        zoom = self.ui.zoomSlider.value()
+        x = label_pos.x() // zoom
+        y = label_pos.y() // zoom
+
+        if 0 <= x < self.original_pixmap.width() and 0 <= y < self.original_pixmap.height():
+            image = self.original_pixmap.toImage()
+            color = image.pixelColor(x, y).getRgb()  # returns (R, G, B, A)
+            self.highlight_color(color)
+        else:
+            self.clear_highlight()
+
+    def highlight_color(self, color):
+        # Highlight palette square
+        for col, label in self.palette_labels.items():
+            if col[:3] == color[:3]:
+                label.setStyleSheet(f"background-color: rgba{col}; border: 3px solid yellow;")
+            else:
+                label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
+
+        # Create a copy of the original image and highlight matching pixels
+        image = self.original_pixmap.toImage()
+        highlight = QImage(image)
+        target_rgb = color[:3]
+
+        for x in range(image.width()):
+            for y in range(image.height()):
+                pixel_color = image.pixelColor(x, y)
+                if (pixel_color.red(), pixel_color.green(), pixel_color.blue()) == target_rgb:
+                    highlight.setPixelColor(x, y, Qt.GlobalColor.red)
+
+        pixmap = QPixmap.fromImage(highlight)
+        zoom = self.ui.zoomSlider.value()
+        scaled_pixmap = pixmap.scaled(
+            pixmap.width() * zoom,
+            pixmap.height() * zoom,
+            transformMode=Qt.TransformationMode.FastTransformation
+        )
+        self.ui.imageLabel.setPixmap(scaled_pixmap)
+
+    def clear_highlight(self):
+        self.update_zoom()  # Resets the image display
+
+        for col, label in self.palette_labels.items():
+            label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
+
+
 
 
