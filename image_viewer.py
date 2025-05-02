@@ -1,4 +1,6 @@
 import colorsys
+import math
+
 from PyQt6.QtWidgets import QMainWindow, QFileDialog, QWidget, QGridLayout, QLabel, QSizePolicy, QHBoxLayout, \
     QVBoxLayout
 from PyQt6.QtGui import QPixmap, QImage, QColor
@@ -41,7 +43,7 @@ class ImageViewer(QMainWindow):
         self.overlayLayout.setContentsMargins(5, 5, 5, 5)
 
         self.colorSwatch = QLabel()
-        self.colorSwatch.setFixedHeight(30)
+        self.colorSwatch.setFixedHeight(40)
         self.colorSwatch.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.colorSwatch.setStyleSheet("background-color: #ffffff; border: 1px solid #000;")
         self.overlayLayout.addWidget(self.colorSwatch)
@@ -63,6 +65,7 @@ class ImageViewer(QMainWindow):
         )
         if file_name:
             self.original_pixmap = QPixmap(file_name)
+            self.set_initial_fit_zoom()
             self.update_zoom()
             self.extract_unique_colors()
 
@@ -81,6 +84,24 @@ class ImageViewer(QMainWindow):
 
     def get_zoom_factor(self):
         return 1.16 ** (self.ui.zoomSlider.value() - 20)
+
+    def set_initial_fit_zoom(self):
+        if not self.original_pixmap:
+            return
+
+        container_size = self.ui.imageLabel.size()
+        image_size = self.original_pixmap.size()
+
+        scale_w = container_size.width() / image_size.width()
+        scale_h = container_size.height() / image_size.height()
+
+        zoom = min(scale_w, scale_h)
+
+        # Convert zoom factor to slider value
+        slider_value = int(round(math.log(zoom) / math.log(1.16 ) + 20)) - 2
+
+        slider_value = max(self.ui.zoomSlider.minimum(), min(slider_value, self.ui.zoomSlider.maximum()))
+        self.ui.zoomSlider.setValue(slider_value)
 
     def extract_unique_colors(self):
         if not self.original_pixmap:
