@@ -91,24 +91,40 @@ class ImageViewer(QMainWindow):
         self.ui.verticalLayout.addWidget(self.palette_widget)
 
     def image_mouse_move(self, event):
-        if not self.original_pixmap:
+        if not self.original_pixmap or not self.ui.imageLabel.pixmap():
             return
 
-        label_pos = event.position().toPoint()
-        scaled_pixmap = self.ui.imageLabel.pixmap()
-        if not scaled_pixmap:
+        label = self.ui.imageLabel
+        pixmap = label.pixmap()
+        if not pixmap:
             return
 
-        zoom = self.ui.zoomSlider.value()
-        x = label_pos.x() // zoom
-        y = label_pos.y() // zoom
+        # Get the size of the QLabel and the pixmap inside it
+        label_size = label.size()
+        pixmap_size = pixmap.size()
 
-        if 0 <= x < self.original_pixmap.width() and 0 <= y < self.original_pixmap.height():
-            image = self.original_pixmap.toImage()
-            color = image.pixelColor(x, y).getRgb()  # returns (R, G, B, A)
-            self.highlight_color(color)
-        else:
-            self.clear_highlight()
+        # Get cursor position relative to QLabel
+        pos = event.position().toPoint()
+
+        # Adjust for scaling (centered image)
+        offset_x = max((label_size.width() - pixmap_size.width()) // 2, 0)
+        offset_y = max((label_size.height() - pixmap_size.height()) // 2, 0)
+
+        x = pos.x() - offset_x
+        y = pos.y() - offset_y
+
+        if 0 <= x < pixmap_size.width() and 0 <= y < pixmap_size.height():
+            # Map back to original image size
+            img_x = int(x * self.original_pixmap.width() / pixmap_size.width())
+            img_y = int(y * self.original_pixmap.height() / pixmap_size.height())
+
+            if 0 <= img_x < self.original_pixmap.width() and 0 <= img_y < self.original_pixmap.height():
+                image = self.original_pixmap.toImage()
+                color = image.pixelColor(img_x, img_y).getRgb()
+                self.highlight_color(color)
+                return
+
+        self.clear_highlight()
 
     def highlight_color(self, color):
         r, g, b = [c / 255.0 for c in color[:3]]
