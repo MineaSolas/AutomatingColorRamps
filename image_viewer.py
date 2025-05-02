@@ -111,27 +111,19 @@ class ImageViewer(QMainWindow):
         else:
             self.clear_highlight()
 
-    @staticmethod
-    def hue_distance(h1, h2):
-        """Return minimal distance between two hue angles (0.0 - 1.0)"""
-        d = abs(h1 - h2)
-        return min(d, 1.0 - d)
-
     def highlight_color(self, color):
         r, g, b = [c / 255.0 for c in color[:3]]
-        h, s, v = colorsys.rgb_to_hsv(r, g, b)  # hue in range 0–1
+        h, s, v = colorsys.rgb_to_hsv(r, g, b)
 
-        # Decide highlight color based on which hue it's closer to
-        red_hue = 0.0  # red = 0°
-        cyan_hue = 0.5  # cyan = 180°
-        if self.hue_distance(h, red_hue) < self.hue_distance(h, cyan_hue):
-            highlight_rgb = (0, 255, 255)  # use cyan
-        else:
-            highlight_rgb = (255, 0, 0)  # use red
+        # Rotate hue by 180° (complement), clamp sat/value to make it vivid
+        h = (h + 0.5) % 1.0
+        s = max(s, 0.8)
+        v = max(v, 0.9)
 
-        highlight_color = QColor(*highlight_rgb)
+        r2, g2, b2 = [int(c * 255) for c in colorsys.hsv_to_rgb(h, s, v)]
+        highlight_color = QColor(r2, g2, b2)
 
-        # Update palette square styles
+        # Highlight palette
         target_rgb = tuple(int(c * 255) for c in (r, g, b))
         for col, label in self.palette_labels.items():
             if col[:3] == target_rgb:
@@ -139,16 +131,16 @@ class ImageViewer(QMainWindow):
             else:
                 label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
 
-        # Highlight pixels in image
+        # Highlight matching pixels with solid highlight color
         image = self.original_pixmap.toImage()
         highlighted = QImage(image)
-
         for x in range(image.width()):
             for y in range(image.height()):
                 pix = image.pixelColor(x, y)
                 if (pix.red(), pix.green(), pix.blue()) == target_rgb:
                     highlighted.setPixelColor(x, y, highlight_color)
 
+        # Show
         pixmap = QPixmap.fromImage(highlighted)
         zoom = self.ui.zoomSlider.value()
         scaled_pixmap = pixmap.scaled(
