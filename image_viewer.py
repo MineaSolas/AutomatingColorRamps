@@ -191,43 +191,45 @@ class ImageViewer(QMainWindow):
             self.clear_selection()
 
     def show_color_info(self, color, is_hover=False):
+        if color is None:
+            return
+
+        # Update selection and hover state
         if is_hover:
             self.hovered_color = color
         else:
             self.selected_color = color
-            self.hovered_color = color
+            self.selected_border_color = self.get_border_color_from_hue(color)
+            self.hovered_color = None
 
-        r, g, b = [c / 255.0 for c in self.hovered_color[:3]]
+        # Determine color to render (hover takes priority visually)
+        active_color = self.hovered_color if is_hover else self.selected_color
+        if not active_color:
+            return
+
+        # Convert color to HSV for highlight calculations
+        r, g, b = [c / 255.0 for c in active_color[:3]]
         h, s, v = colorsys.rgb_to_hsv(r, g, b)
+        target_rgb = tuple(int(c * 255) for c in (r, g, b))
 
-        # Choose highlight color (red or cyan) based on hue
-        if h < 0.125 or h > 0.7:
-            highlight_rgb = (0, 255, 255)
-        else:
-            highlight_rgb = (255, 0, 0)
-
+        # Determine highlight color for image
+        highlight_rgb = (0, 255, 255) if h < 0.125 or h > 0.7 else (255, 0, 0)
         highlight_color = QColor(*highlight_rgb)
 
-        # Determine target RGB (integer)
-        target_rgb = tuple(int(c * 255) for c in (r, g, b))
-        highlight_css = f"rgb({highlight_color.red()}, {highlight_color.green()}, {highlight_color.blue()})"
-
-        # Highlight palette
+        # Palette highlighting
         for col, label in self.palette_labels.items():
-            if col[:3] == target_rgb:
-                label.setStyleSheet(
-                    f"background-color: rgba{col}; border: 3px solid {highlight_css};"
-                )
-            elif self.selected_color and col[:3] == self.selected_color[:3]:
-                label.setStyleSheet(
-                    f"background-color: rgba{col}; border: 5px solid {highlight_css};"
-                )
-            else:
-                label.setStyleSheet(
-                    f"background-color: rgba{col}; border: 1px solid #000;"
-                )
+            is_selected = self.selected_color and col[:3] == self.selected_color[:3]
+            is_hovered = self.hovered_color and col[:3] == self.hovered_color[:3]
 
-        # Highlight pixels ONLY when hovering (not when clicking to select)
+            if is_hovered:
+                border_color = self.get_border_color_from_hue(col)
+                label.setStyleSheet(f"background-color: rgba{col}; border: 4px solid {border_color};")
+            elif is_selected:
+                label.setStyleSheet(f"background-color: rgba{col}; border: 6px solid {self.selected_border_color};")
+            else:
+                label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
+
+        # Highlight image pixels (only on hover)
         if is_hover:
             image = self.original_pixmap.toImage()
             highlighted = QImage(image)
@@ -246,9 +248,9 @@ class ImageViewer(QMainWindow):
             )
             self.ui.imageLabel.setPixmap(scaled_pixmap)
         else:
-            self.update_zoom()  # Restore normal image when selecting
+            self.update_zoom()
 
-        # Update color info display
+        # Update info overlay
         r_int, g_int, b_int = [int(c * 255) for c in (r, g, b)]
         h_deg = int(h * 360)
         s_pct = int(s * 100)
@@ -260,8 +262,15 @@ class ImageViewer(QMainWindow):
         self.colorTextHEX.setText(f"HEX: {hex_str}")
         self.colorTextHSV.setText(f"HSV: ({h_deg}°, {s_pct}%, {v_pct}%)")
 
+    @staticmethod
+    def get_border_color_from_hue(color):
+        r, g, b = [c / 255.0 for c in color[:3]]
+        h, _, _ = colorsys.rgb_to_hsv(r, g, b)
+        return "cyan" if h < 0.125 or h > 0.7 else "red"
+
     def clear_highlight(self):
         self.hovered_color = None
+
         if self.selected_color:
             self.show_color_info(self.selected_color, is_hover=False)
         else:
@@ -271,10 +280,12 @@ class ImageViewer(QMainWindow):
             self.colorTextHEX.setText("HEX: -")
             self.colorTextHSV.setText("HSV: -")
 
-        # Reapply palette borders based on selection
         for col, label in self.palette_labels.items():
-            if self.selected_color and col[:3] == self.selected_color[:3]:
-                label.setStyleSheet(f"background-color: rgba{col}; border: 3px solid red;")
+            is_selected = self.selected_color and col[:3] == self.selected_color[:3]
+            if is_selected:
+                label.setStyleSheet(
+                    f"background-color: rgba{col}; border: 5px solid {self.selected_border_color};"
+                )
             else:
                 label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
 
