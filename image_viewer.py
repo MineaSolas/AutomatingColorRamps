@@ -1,6 +1,5 @@
 import colorsys
 import math
-from functools import partial
 
 from PyQt6.QtWidgets import QMainWindow, QFileDialog, QWidget, QLabel, QSizePolicy, QVBoxLayout
 from PyQt6.QtGui import QPixmap, QImage, QColor
@@ -20,28 +19,31 @@ class ImageViewer(QMainWindow):
         self.ui.setupUi(self)
         self.resize(1200, 800)
 
+        self.palette_labels = {}
         self.selected_color = None
         self.hovered_color = None
 
+        # Replace the default imageLabel with a clickable subclass
+        self.ui.verticalLayout.removeWidget(self.ui.imageLabel)
+        self.ui.imageLabel.deleteLater()
+
+        self.ui.imageLabel = ClickableImageLabel(viewer=self)
+        self.ui.verticalLayout.insertWidget(1, self.ui.imageLabel)
+
         self.ui.loadButton.clicked.connect(self.load_image)
         self.ui.zoomSlider.valueChanged.connect(self.update_zoom)
+
         self.ui.zoomLabel.setMinimumWidth(50)
         self.ui.zoomLabel.setStyleSheet("padding-bottom: 8px;")
 
         self.original_pixmap = None
-        self.ui.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.ui.imageLabel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
-        self.ui.imageLabel.setScaledContents(False)
 
-        self.ui.imageLabel.setMouseTracking(True)
-        self.ui.imageLabel.mouseMoveEvent = self.image_mouse_move
-
-        # Create overlay widget on top-left of imageLabel
+        # Create overlay color widget on top-left of imageLabel
         self.colorOverlay = QWidget(self.ui.imageLabel)
         self.colorOverlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.colorOverlay.setStyleSheet("background-color: rgba(255, 255, 255, 180); border: 1px solid #999;")
         self.colorOverlay.move(10, 10)
-        self.colorOverlay.resize(180, 120)  # increased height to fit all lines
+        self.colorOverlay.resize(180, 120)
 
         self.overlayLayout = QVBoxLayout(self.colorOverlay)
         self.overlayLayout.setContentsMargins(5, 5, 5, 5)
@@ -150,40 +152,41 @@ class ImageViewer(QMainWindow):
 
         self.ui.verticalLayout.addWidget(self.palette_widget)
 
-    def image_mouse_move(self, event):
+    def get_image_color_at_pos(self, pos):
         if not self.original_pixmap or not self.ui.imageLabel.pixmap():
-            return
+            return None
 
         label = self.ui.imageLabel
-        pixmap = label.pixmap()
-        if not pixmap:
-            return
+        zoom = self.get_zoom_factor()
 
-        # Mouse position relative to the QLabel
-        mouse_pos = event.position().toPoint()
         label_width = label.width()
         label_height = label.height()
-
-        # Get the scaled pixmap size
-        zoom = self.get_zoom_factor()
         pixmap_width = self.original_pixmap.width() * zoom
         pixmap_height = self.original_pixmap.height() * zoom
 
-        # Calculate margins (image may be centered inside QLabel)
         offset_x = (label_width - pixmap_width) // 2
         offset_y = (label_height - pixmap_height) // 2
 
-        # Coordinates inside the image
-        x = (mouse_pos.x() - offset_x) // zoom
-        y = (mouse_pos.y() - offset_y) // zoom
+        x = (pos.x() - offset_x) // zoom
+        y = (pos.y() - offset_y) // zoom
 
-        # Validate coordinates
         if 0 <= x < self.original_pixmap.width() and 0 <= y < self.original_pixmap.height():
             image = self.original_pixmap.toImage()
-            color = image.pixelColor(int(x), int(y)).getRgb()
+            return image.pixelColor(int(x), int(y)).getRgb()
+
+        return None
+
+    def image_mouse_move(self, event):
+        color = self.get_image_color_at_pos(event.position().toPoint())
+        if color:
             self.show_color_info(color, is_hover=True)
         else:
             self.clear_highlight()
+
+    def image_mouse_click(self, event):
+        color = self.get_image_color_at_pos(event.position().toPoint())
+        if color:
+            self.show_color_info(color, is_hover=False)
 
     def show_color_info(self, color, is_hover=False):
         if is_hover:
@@ -288,6 +291,23 @@ class ColorLabel(QLabel):
     def leaveEvent(self, event):
         self.viewer.clear_highlight()
 
+class ClickableImageLabel(QLabel):
+    def __init__(self, viewer, parent=None):
+        super().__init__(parent)
+        self.viewer = viewer
+
+        self.setMouseTracking(True)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumSize(1, 1)
+        self.setScaledContents(False)
+        self.setObjectName("imageLabel")
+
+    def mousePressEvent(self, event):
+        self.viewer.image_mouse_click(event)
+
+    def mouseMoveEvent(self, event):
+        self.viewer.image_mouse_move(event)
 
 
 
