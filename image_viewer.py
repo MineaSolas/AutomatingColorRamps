@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QMainWindow, QFileDialog, QWidget, QGridLayout, QLabel
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtGui import QPixmap, QImage, QColor
 from PyQt6.QtCore import Qt
 import numpy as np
 from PIL import Image
@@ -110,25 +110,37 @@ class ImageViewer(QMainWindow):
             self.clear_highlight()
 
     def highlight_color(self, color):
-        # Highlight palette square
+        # Highlight palette squares
         for col, label in self.palette_labels.items():
             if col[:3] == color[:3]:
                 label.setStyleSheet(f"background-color: rgba{col}; border: 3px solid yellow;")
             else:
                 label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
 
-        # Create a copy of the original image and highlight matching pixels
+        # Compute contrast color
+        r, g, b = color[:3]
+        luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        contrast_color = QColor(0, 0, 0) if luminance > 186 else QColor(255, 255, 255)
+
+        # Create a highlighted version of the image
         image = self.original_pixmap.toImage()
-        highlight = QImage(image)
-        target_rgb = color[:3]
+        highlighted = QImage(image)
 
         for x in range(image.width()):
             for y in range(image.height()):
-                pixel_color = image.pixelColor(x, y)
-                if (pixel_color.red(), pixel_color.green(), pixel_color.blue()) == target_rgb:
-                    highlight.setPixelColor(x, y, Qt.GlobalColor.red)
+                pix = image.pixelColor(x, y)
+                if (pix.red(), pix.green(), pix.blue()) == (r, g, b):
+                    # blend the pixel with contrast color using 50% alpha overlay
+                    blended = QColor(
+                        (pix.red() + contrast_color.red()) // 2,
+                        (pix.green() + contrast_color.green()) // 2,
+                        (pix.blue() + contrast_color.blue()) // 2,
+                        pix.alpha()
+                    )
+                    highlighted.setPixelColor(x, y, blended)
 
-        pixmap = QPixmap.fromImage(highlight)
+        # Show highlighted image
+        pixmap = QPixmap.fromImage(highlighted)
         zoom = self.ui.zoomSlider.value()
         scaled_pixmap = pixmap.scaled(
             pixmap.width() * zoom,
