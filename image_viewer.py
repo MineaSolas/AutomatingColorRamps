@@ -1,8 +1,8 @@
 import colorsys
 import math
+from functools import partial
 
-from PyQt6.QtWidgets import QMainWindow, QFileDialog, QWidget, QGridLayout, QLabel, QSizePolicy, QHBoxLayout, \
-    QVBoxLayout
+from PyQt6.QtWidgets import QMainWindow, QFileDialog, QWidget, QLabel, QSizePolicy, QVBoxLayout
 from PyQt6.QtGui import QPixmap, QImage, QColor
 from PyQt6.QtCore import Qt
 import numpy as np
@@ -13,11 +13,15 @@ from ui.main_window import Ui_MainWindow
 
 
 class ImageViewer(QMainWindow):
+
     def __init__(self):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         self.resize(1200, 800)
+
+        self.selected_color = None
+        self.hovered_color = None
 
         self.ui.loadButton.clicked.connect(self.load_image)
         self.ui.zoomSlider.valueChanged.connect(self.update_zoom)
@@ -137,12 +141,9 @@ class ImageViewer(QMainWindow):
 
         for i, color in enumerate(colors):
             r, g, b, a = color
-            label = QLabel()
+            label = ColorLabel(color, self)
             label.setFixedSize(40, 40)
             label.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
-
-            label.enterEvent = lambda event, col=color: self.highlight_color(col)
-            label.leaveEvent = lambda event: self.clear_highlight()
 
             self.palette_labels[color] = label
             layout.addWidget(label)
@@ -180,14 +181,21 @@ class ImageViewer(QMainWindow):
         if 0 <= x < self.original_pixmap.width() and 0 <= y < self.original_pixmap.height():
             image = self.original_pixmap.toImage()
             color = image.pixelColor(int(x), int(y)).getRgb()
-            self.highlight_color(color)
+            self.show_color_info(color, is_hover=True)
         else:
             self.clear_highlight()
 
-    def highlight_color(self, color):
-        r, g, b = [c / 255.0 for c in color[:3]]
+    def show_color_info(self, color, is_hover=False):
+        if is_hover:
+            self.hovered_color = color
+        else:
+            self.selected_color = color
+            self.hovered_color = color
+
+        r, g, b = [c / 255.0 for c in self.hovered_color[:3]]
         h, s, v = colorsys.rgb_to_hsv(r, g, b)
 
+        # Choose highlight color (red or cyan) based on hue
         if h < 0.125 or h > 0.7:
             highlight_rgb = (0, 255, 255)
         else:
@@ -195,11 +203,17 @@ class ImageViewer(QMainWindow):
 
         highlight_color = QColor(*highlight_rgb)
 
-        # Highlight palette
+        # Determine target RGB (integer)
         target_rgb = tuple(int(c * 255) for c in (r, g, b))
         highlight_css = f"rgb({highlight_color.red()}, {highlight_color.green()}, {highlight_color.blue()})"
+
+        # Highlight palette
         for col, label in self.palette_labels.items():
             if col[:3] == target_rgb:
+                label.setStyleSheet(
+                    f"background-color: rgba{col}; border: 3px solid {highlight_css};"
+                )
+            elif self.selected_color and col[:3] == self.selected_color[:3]:
                 label.setStyleSheet(
                     f"background-color: rgba{col}; border: 5px solid {highlight_css};"
                 )
@@ -208,47 +222,74 @@ class ImageViewer(QMainWindow):
                     f"background-color: rgba{col}; border: 1px solid #000;"
                 )
 
-        # Highlight matching pixels with solid highlight color
-        image = self.original_pixmap.toImage()
-        highlighted = QImage(image)
-        for x in range(image.width()):
-            for y in range(image.height()):
-                pix = image.pixelColor(x, y)
-                if (pix.red(), pix.green(), pix.blue()) == target_rgb:
-                    highlighted.setPixelColor(x, y, highlight_color)
+        # Highlight pixels ONLY when hovering (not when clicking to select)
+        if is_hover:
+            image = self.original_pixmap.toImage()
+            highlighted = QImage(image)
+            for x in range(image.width()):
+                for y in range(image.height()):
+                    pix = image.pixelColor(x, y)
+                    if (pix.red(), pix.green(), pix.blue()) == target_rgb:
+                        highlighted.setPixelColor(x, y, highlight_color)
 
-        # Show
-        pixmap = QPixmap.fromImage(highlighted)
-        zoom = self.get_zoom_factor()
-        scaled_pixmap = pixmap.scaled(
-            int(pixmap.width() * zoom),
-            int(pixmap.height() * zoom),
-            transformMode=Qt.TransformationMode.FastTransformation
-        )
-        self.ui.imageLabel.setPixmap(scaled_pixmap)
+            pixmap = QPixmap.fromImage(highlighted)
+            zoom = self.get_zoom_factor()
+            scaled_pixmap = pixmap.scaled(
+                int(pixmap.width() * zoom),
+                int(pixmap.height() * zoom),
+                transformMode=Qt.TransformationMode.FastTransformation
+            )
+            self.ui.imageLabel.setPixmap(scaled_pixmap)
+        else:
+            self.update_zoom()  # Restore normal image when selecting
 
-        r, g, b = color[:3]
-        h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+        # Update color info display
+        r_int, g_int, b_int = [int(c * 255) for c in (r, g, b)]
         h_deg = int(h * 360)
         s_pct = int(s * 100)
         v_pct = int(v * 100)
-        hex_str = f"#{r:02X}{g:02X}{b:02X}"
+        hex_str = f"#{r_int:02X}{g_int:02X}{b_int:02X}"
 
         self.colorSwatch.setStyleSheet(f"background-color: {hex_str}; border: 1px solid #000;")
-        self.colorTextRGB.setText(f"RGB: ({r}, {g}, {b})")
+        self.colorTextRGB.setText(f"RGB: ({r_int}, {g_int}, {b_int})")
         self.colorTextHEX.setText(f"HEX: {hex_str}")
         self.colorTextHSV.setText(f"HSV: ({h_deg}°, {s_pct}%, {v_pct}%)")
 
     def clear_highlight(self):
-        self.update_zoom()  # Resets the image display
+        self.hovered_color = None
+        if self.selected_color:
+            self.show_color_info(self.selected_color, is_hover=False)
+        else:
+            self.update_zoom()
+            self.colorSwatch.setStyleSheet("background-color: #000; border: 1px solid #000;")
+            self.colorTextRGB.setText("RGB: -")
+            self.colorTextHEX.setText("HEX: -")
+            self.colorTextHSV.setText("HSV: -")
 
+        # Reapply palette borders based on selection
         for col, label in self.palette_labels.items():
-            label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
+            if self.selected_color and col[:3] == self.selected_color[:3]:
+                label.setStyleSheet(f"background-color: rgba{col}; border: 3px solid red;")
+            else:
+                label.setStyleSheet(f"background-color: rgba{col}; border: 1px solid #000;")
 
-        self.colorSwatch.setStyleSheet("background-color: #ffffff; border: 1px solid #000;")
-        self.colorTextRGB.setText("RGB: -")
-        self.colorTextHEX.setText("HEX: -")
-        self.colorTextHSV.setText("HSV: -")
+class ColorLabel(QLabel):
+    def __init__(self, color, viewer, parent=None):
+        super().__init__(parent)
+        self.color = color
+        self.viewer = viewer
+
+    def mousePressEvent(self, event):
+        self.viewer.show_color_info(self.color, is_hover=False)
+
+    def enterEvent(self, event):
+        self.viewer.show_color_info(self.color, is_hover=True)
+
+    def leaveEvent(self, event):
+        self.viewer.clear_highlight()
+
+
+
 
 
 
