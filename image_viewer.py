@@ -14,7 +14,7 @@ from palette import ColorPalette
 
 
 class ImageViewerWidget(QWidget):
-    def __init__(self):
+    def __init__(self, show_load_button=True, palette_square_size=40):
         super().__init__()
 
         self.original_pixmap = None
@@ -26,8 +26,10 @@ class ImageViewerWidget(QWidget):
         self.layout = QVBoxLayout(self)
         self.setLayout(self.layout)
 
-        self.loadButton = QPushButton("Load Image")
-        self.layout.addWidget(self.loadButton)
+        if show_load_button:
+            self.loadButton = QPushButton("Load Image")
+            self.layout.addWidget(self.loadButton)
+            self.loadButton.clicked.connect(self.load_image)
 
         self.imageLabel = ClickableImage(viewer=self)
         self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -57,8 +59,8 @@ class ImageViewerWidget(QWidget):
 
         self.color_palette = ColorPalette(self)
         self.layout.addWidget(self.color_palette)
+        self.palette_square_size = palette_square_size
 
-        self.loadButton.clicked.connect(self.load_image)
         self.zoomSlider.valueChanged.connect(self.update_image)
 
     def init_color_details_widget(self):
@@ -106,7 +108,7 @@ class ImageViewerWidget(QWidget):
         container_size = self.imageLabel.size()
         image_size = self.original_pixmap.size()
         zoom = min(container_size.width() / image_size.width(), container_size.height() / image_size.height())
-        slider_value = int(round(math.log(zoom) / math.log(1.16) + 20)) - 2
+        slider_value = int(round(math.log(zoom) / math.log(1.16) + 20)) - 3
         self.zoomSlider.setValue(max(self.zoomSlider.minimum(), min(slider_value, self.zoomSlider.maximum())))
 
     def extract_unique_colors(self):
@@ -116,7 +118,7 @@ class ImageViewerWidget(QWidget):
         arr = np.array(ptr, dtype=np.uint8).reshape((qimage.height(), qimage.width(), 4))
         pixels = list(Image.fromarray(arr, mode='RGBA').getdata())
         unique_colors = sorted(set(pixels), key=lambda c: (c[3], c[0], c[1], c[2]))
-        self.color_palette.populate([c for c in unique_colors if c[3] > 0])
+        self.color_palette.populate([c for c in unique_colors if c[3] > 0], square_size=self.palette_square_size)
 
     def get_image_color_at_pos(self, pos):
         if not self.original_pixmap or not self.imageLabel.pixmap():

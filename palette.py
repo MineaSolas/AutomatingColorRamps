@@ -4,13 +4,12 @@ from PyQt6.QtCore import Qt
 from color_utils import get_highlight_color
 from ui.flow_layout import FlowLayout
 
-
 class ColorLabel(QLabel):
-    def __init__(self, color, viewer, parent=None):
+    def __init__(self, color, viewer, size=40, parent=None):
         super().__init__(parent)
         self.color = color
         self.viewer = viewer
-        self.setFixedSize(40, 40)
+        self.setFixedSize(size, size)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def mousePressEvent(self, event):
@@ -32,10 +31,10 @@ class ColorPalette(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self.layout)
 
-    def populate(self, colors):
+    def populate(self, colors, square_size=40):
         self.clear()
         for color in colors:
-            label = ColorLabel(color, self.viewer)
+            label = ColorLabel(color, self.viewer, size=square_size)
             r, g, b, a = color
             label.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
             self.labels[color] = label

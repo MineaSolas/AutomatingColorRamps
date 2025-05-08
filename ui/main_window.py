@@ -7,7 +7,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Pixel Art Color Processor")
-        self.resize(1200, 800)
+        self.resize(1600, 900)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
