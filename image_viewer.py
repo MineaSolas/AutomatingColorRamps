@@ -79,10 +79,16 @@ class ImageViewerWidget(QWidget):
             label.setStyleSheet("font-size: 10pt;")
             self.overlayLayout.addWidget(label)
 
-    def load_image(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open Image", "", "Images (*.png *.jpg *.bmp)")
-        if file_name:
-            self.original_pixmap = QPixmap(file_name)
+        self.colorDetails.hide()
+
+    def load_image(self, file_path=None):
+        if not file_path:
+            file_path, _ = QFileDialog.getOpenFileName(self, "Open Image", "", "Images (*.png *.jpg *.bmp)")
+            if not file_path:
+                return
+
+        self.original_pixmap = QPixmap(file_path)
+        if not self.original_pixmap.isNull():
             self.set_initial_fit_zoom()
             self.update_image()
             self.extract_unique_colors()
@@ -143,7 +149,9 @@ class ImageViewerWidget(QWidget):
 
     def show_color_info(self, color, is_hover=False):
         if not color:
+            self.colorDetails.hide()
             return
+
         if is_hover:
             self.hovered_color = color
         else:
@@ -165,6 +173,7 @@ class ImageViewerWidget(QWidget):
             self.update_image()
 
         self.update_overlay_text((r * 255, g * 255, b * 255))
+        self.colorDetails.show()
 
     def update_overlay_text(self, color):
         info = get_text_descriptions(color)
@@ -209,8 +218,5 @@ class ImageViewerWidget(QWidget):
         self.colorTextHEX.setText("HEX: -")
         self.colorTextHSV.setText("HSV: -")
 
-        self.color_palette.update_borders(
-            self.selected_color,
-            self.hovered_color,
-            None
-        )
+        self.color_palette.update_borders(self.selected_color, self.hovered_color, None)
+        self.colorDetails.hide()
