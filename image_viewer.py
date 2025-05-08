@@ -1,45 +1,53 @@
 import colorsys
 import math
 
-from PyQt6.QtWidgets import QMainWindow, QFileDialog, QLabel, QWidget, QVBoxLayout, QSizePolicy
+from PyQt6.QtWidgets import QFileDialog, QLabel, QWidget, QVBoxLayout, QSizePolicy, QPushButton, QFrame, QHBoxLayout, \
+    QSlider
 from PyQt6.QtGui import QPixmap, QImage, QColor
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 import numpy as np
 from PIL import Image
 
 from clickable_image import ClickableImage
 from color_utils import get_highlight_color, get_text_descriptions
-from ui.main_window import Ui_MainWindow
 from palette import ColorPalette
 
 
-class ImageViewer(QMainWindow):
+class ImageViewerWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.ui = Ui_MainWindow()
-        self.ui.setupUi(self)
-        self.resize(1200, 800)
 
         self.original_pixmap = None
-
         self.selected_color = None
-        self.selected_border_color = "red"
         self.hovered_color = None
+        self.selected_border_color = "red"
 
-        self.ui.loadButton.clicked.connect(self.load_image)
+        # Layout setup
+        self.layout = QVBoxLayout(self)
+        self.setLayout(self.layout)
 
-        self.ui.zoomSlider.valueChanged.connect(self.update_image)
-        self.ui.zoomLabel.setMinimumWidth(50)
-        self.ui.zoomLabel.setStyleSheet("padding-bottom: 8px;")
+        self.loadButton = QPushButton("Load Image")
+        self.layout.addWidget(self.loadButton)
 
-        # Replace default imageLabel
-        self.ui.verticalLayout.removeWidget(self.ui.imageLabel)
-        self.ui.imageLabel.deleteLater()
-        self.ui.imageLabel = ClickableImage(viewer=self)
-        self.ui.verticalLayout.insertWidget(1, self.ui.imageLabel)
+        self.imageLabel = ClickableImage(viewer=self)
+        self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.imageLabel.setMinimumSize(QSize(200, 200))
+        self.imageLabel.setFrameShape(QFrame.Shape.Box)
+        self.layout.addWidget(self.imageLabel)
 
-        # Setup color details overlay widget
-        self.colorDetails = QWidget(self.ui.imageLabel)
+        self.hboxlayout = QHBoxLayout()
+        self.zoomLabel = QLabel("100%")
+        self.zoomSlider = QSlider(Qt.Orientation.Horizontal)
+        self.zoomSlider.setMinimum(1)
+        self.zoomSlider.setMaximum(40)
+        self.zoomSlider.setValue(20)
+        self.zoomSlider.setTickInterval(1)
+        self.zoomSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.hboxlayout.addWidget(self.zoomLabel)
+        self.hboxlayout.addWidget(self.zoomSlider)
+        self.layout.addLayout(self.hboxlayout)
+
+        self.colorDetails = QWidget(self.imageLabel)
         self.overlayLayout = QVBoxLayout(self.colorDetails)
         self.colorSwatch = QLabel()
         self.colorTextRGB = QLabel("RGB: -")
@@ -48,14 +56,16 @@ class ImageViewer(QMainWindow):
         self.init_color_details_widget()
 
         self.color_palette = ColorPalette(self)
-        self.ui.verticalLayout.addWidget(self.color_palette)
+        self.layout.addWidget(self.color_palette)
+
+        self.loadButton.clicked.connect(self.load_image)
+        self.zoomSlider.valueChanged.connect(self.update_image)
 
     def init_color_details_widget(self):
         self.colorDetails.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.colorDetails.setStyleSheet("background-color: rgba(255, 255, 255, 180); border: 1px solid #999;")
+        self.colorDetails.setStyleSheet("background-color: rgba(255,255,255,180); border: 1px solid #999;")
         self.colorDetails.move(10, 10)
         self.colorDetails.resize(180, 120)
-
         self.overlayLayout.setContentsMargins(5, 5, 5, 5)
 
         self.colorSwatch.setFixedHeight(40)
@@ -77,7 +87,7 @@ class ImageViewer(QMainWindow):
 
     def update_image(self):
         zoom = self.get_zoom_factor()
-        self.ui.zoomLabel.setText(f"{int(zoom * 100)}%")
+        self.zoomLabel.setText(f"{int(zoom * 100)}%")
         if self.original_pixmap:
             scaled_pixmap = self.original_pixmap.scaled(
                 int(self.original_pixmap.width() * zoom),
@@ -85,19 +95,19 @@ class ImageViewer(QMainWindow):
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.FastTransformation
             )
-            self.ui.imageLabel.setPixmap(scaled_pixmap)
+            self.imageLabel.setPixmap(scaled_pixmap)
 
     def get_zoom_factor(self):
-        return 1.16 ** (self.ui.zoomSlider.value() - 20)
+        return 1.16 ** (self.zoomSlider.value() - 20)
 
     def set_initial_fit_zoom(self):
         if not self.original_pixmap:
             return
-        container_size = self.ui.imageLabel.size()
+        container_size = self.imageLabel.size()
         image_size = self.original_pixmap.size()
         zoom = min(container_size.width() / image_size.width(), container_size.height() / image_size.height())
         slider_value = int(round(math.log(zoom) / math.log(1.16) + 20)) - 2
-        self.ui.zoomSlider.setValue(max(self.ui.zoomSlider.minimum(), min(slider_value, self.ui.zoomSlider.maximum())))
+        self.zoomSlider.setValue(max(self.zoomSlider.minimum(), min(slider_value, self.zoomSlider.maximum())))
 
     def extract_unique_colors(self):
         qimage = self.original_pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
@@ -109,9 +119,9 @@ class ImageViewer(QMainWindow):
         self.color_palette.populate([c for c in unique_colors if c[3] > 0])
 
     def get_image_color_at_pos(self, pos):
-        if not self.original_pixmap or not self.ui.imageLabel.pixmap():
+        if not self.original_pixmap or not self.imageLabel.pixmap():
             return None
-        label = self.ui.imageLabel
+        label = self.imageLabel
         zoom = self.get_zoom_factor()
         offset_x = (label.width() - self.original_pixmap.width() * zoom) // 2
         offset_y = (label.height() - self.original_pixmap.height() * zoom) // 2
@@ -174,7 +184,7 @@ class ImageViewer(QMainWindow):
             int(image.width() * zoom), int(image.height() * zoom),
             transformMode=Qt.TransformationMode.FastTransformation
         )
-        self.ui.imageLabel.setPixmap(scaled_pixmap)
+        self.imageLabel.setPixmap(scaled_pixmap)
 
     def clear_hover(self):
         self.hovered_color = None

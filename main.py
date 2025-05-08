@@ -1,11 +1,10 @@
 import sys
 from PyQt6.QtWidgets import QApplication
-from image_viewer import ImageViewer
+from ui.main_window import MainWindow
 
 def main():
     app = QApplication(sys.argv)
-    window = ImageViewer()
-    window.setWindowTitle("Pixel Art Color Processor")
+    window = MainWindow()
     window.show()
     sys.exit(app.exec())
 

@@ -40,7 +40,6 @@ class ColorPalette(QWidget):
             label.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
             self.labels[color] = label
             self.layout.addWidget(label)
-        self.viewer.ui.verticalLayout.addWidget(self)
 
     def clear(self):
         for label in self.labels.values():
