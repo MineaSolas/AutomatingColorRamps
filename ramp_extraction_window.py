@@ -1,5 +1,10 @@
-from PyQt6.QtWidgets import QWidget, QGridLayout, QLabel, QSizePolicy
+import networkx as nx
+from PyQt6.QtWidgets import QWidget, QGridLayout, QLabel, QSizePolicy, QFrame, QVBoxLayout, QPushButton
 from PyQt6.QtCore import Qt
+from matplotlib import pyplot as plt
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+
+from color_utils import extract_adjacent_color_pairs
 from image_viewer import ImageViewerWidget
 
 
@@ -22,12 +27,16 @@ class RampWindow(QWidget):
         self.mini_viewer.update_image()
         layout.addWidget(self.mini_viewer, 0, 0)
 
-        # Top-Right: Placeholder for graph
-        self.graph_view = QLabel("Graph View (coming soon)")
-        self.graph_view.setStyleSheet("background-color: #eee; border: 1px solid #888;")
-        self.graph_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.graph_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(self.graph_view, 0, 1)
+        # Top-Right: Graph view
+        self.graph_container = QFrame()
+        self.graph_container.setLayout(QVBoxLayout())
+        layout.addWidget(self.graph_container, 0, 1)
+
+        self.graph_button = QPushButton("Extract Adjacency Graph")
+        self.graph_button.clicked.connect(self.generate_graph)
+        self.graph_container.layout().addWidget(self.graph_button)
+
+        self.graph_canvas = None  # placeholder for matplotlib canvas
 
         # Bottom-Left: Placeholder for ramps
         self.ramp_display = QLabel("Ramps View (coming soon)")
@@ -48,3 +57,45 @@ class RampWindow(QWidget):
         layout.setRowStretch(1, 1)
         layout.setColumnStretch(0, 1)
         layout.setColumnStretch(1, 1)
+
+    def generate_graph(self):
+        image_array = self.mini_viewer.get_image_array()
+        if image_array is None:
+            return
+
+        pair_counts = extract_adjacent_color_pairs(image_array)
+
+        if not pair_counts:
+            return
+
+        # Build graph
+        graph = nx.Graph()
+        for (color1, color2), count in pair_counts.items():
+            graph.add_node(color1)
+            graph.add_node(color2)
+            graph.add_edge(color1, color2, weight=count)
+
+        # Remove old canvas if present
+        if self.graph_canvas:
+            self.graph_container.layout().removeWidget(self.graph_canvas)
+            self.graph_canvas.setParent(None)
+            self.graph_canvas = None
+
+        # Create a matplotlib figure
+        fig, ax = plt.subplots(figsize=(6, 6))
+        pos = nx.spring_layout(graph, seed=42)
+
+        for node in graph.nodes:
+            r, g, b, a = node
+            nx.draw_networkx_nodes(graph, pos,
+                                   nodelist=[node],
+                                   node_size=200,
+                                   node_color=f"#{r:02X}{g:02X}{b:02X}",
+                                   ax=ax)
+
+        nx.draw_networkx_edges(graph, pos, ax=ax, alpha=0.5)
+        ax.set_axis_off()
+
+        self.graph_canvas = FigureCanvas(fig)
+        self.graph_container.layout().addWidget(self.graph_canvas)
+

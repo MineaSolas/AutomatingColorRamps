@@ -220,3 +220,11 @@ class ImageViewerWidget(QWidget):
 
         self.color_palette.update_borders(self.selected_color, self.hovered_color, None)
         self.colorDetails.hide()
+
+    def get_image_array(self):
+        if not self.original_pixmap:
+            return None
+        qimage = self.original_pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+        ptr = qimage.bits()
+        ptr.setsize(qimage.sizeInBytes())
+        return np.array(ptr, dtype=np.uint8).reshape((qimage.height(), qimage.width(), 4))
