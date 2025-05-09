@@ -161,7 +161,6 @@ class ImageViewerWidget(QWidget):
 
         active_color = self.hovered_color if is_hover else self.selected_color
         r, g, b = [c / 255.0 for c in active_color[:3]]
-        print(active_color[:3])
         h, s, v = colorsys.rgb_to_hsv(r, g, b)
         target_rgb = tuple(int(c * 255) for c in (r, g, b))
         highlight_color = QColor(*(0, 255, 255) if h < 0.125 or h > 0.7 else (255, 0, 0))
