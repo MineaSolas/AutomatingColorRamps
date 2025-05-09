@@ -66,6 +66,10 @@ def extract_adjacent_color_pairs(
     return accepted_pairs
 
 
+def color_to_hsv(c):
+    r, g, b = [x / 255.0 for x in c[:3]]
+    return colorsys.rgb_to_hsv(r, g, b)
+
 def get_highlight_color(color):
     r, g, b = [c / 255.0 for c in color[:3]]
     h, _, _ = colorsys.rgb_to_hsv(r, g, b)

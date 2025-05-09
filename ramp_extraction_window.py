@@ -1,11 +1,12 @@
 import networkx as nx
+import numpy as np
 from PyQt6.QtWidgets import QWidget, QGridLayout, QLabel, QSizePolicy, QFrame, QVBoxLayout, QPushButton, QHBoxLayout, \
-    QComboBox, QSlider
+    QComboBox, QSlider, QScrollArea
 from PyQt6.QtCore import Qt
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
-from color_utils import extract_adjacent_color_pairs
+from color_utils import extract_adjacent_color_pairs, color_to_hsv
 from image_viewer import ImageViewerWidget
 
 
@@ -29,6 +30,7 @@ class RampWindow(QWidget):
         layout.addWidget(self.mini_viewer, 0, 0)
 
         # Top-Right: Graph container
+        self.color_graph = None
         self.use_8_neighbors = False
         self.graph_container = QFrame()
         graph_layout = QVBoxLayout()
@@ -69,18 +71,36 @@ class RampWindow(QWidget):
         self.update_threshold_controls()
         graph_layout.addLayout(controls_layout)
 
-        # Bottom-Left: Placeholder for ramps
-        self.ramp_display = QLabel("Ramps View (coming soon)")
+        # Bottom-Left: Placeholder for palette
+        self.ramp_display = QLabel("Palette View (coming soon)")
         self.ramp_display.setStyleSheet("background-color: #f9f9f9; border: 1px solid #888;")
         self.ramp_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.ramp_display.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.ramp_display, 1, 0)
 
-        # Bottom-Right: Future controls
-        self.controls_area = QLabel("Controls / Filters (future)")
-        self.controls_area.setStyleSheet("background-color: #ddd; border: 1px solid #888;")
-        self.controls_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.controls_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # Bottom-Right: Ramps
+        self.controls_area = QWidget()
+        controls_layout = QVBoxLayout(self.controls_area)
+
+        self.ramp_scroll_area = QScrollArea()
+        self.ramp_scroll_area.setWidgetResizable(True)
+        self.ramp_container = QWidget()
+        self.ramp_layout = QVBoxLayout(self.ramp_container)
+        self.ramp_scroll_area.setWidget(self.ramp_container)
+        controls_layout.addWidget(self.ramp_scroll_area)
+
+        self.ramp_tolerance_slider = QSlider(Qt.Orientation.Horizontal)
+        self.ramp_tolerance_slider.setMinimum(1)
+        self.ramp_tolerance_slider.setMaximum(100)
+        self.ramp_tolerance_slider.setValue(10)  # Default tolerance: 0.10
+        controls_layout.addWidget(QLabel("Ramp Smoothness Tolerance"))
+        controls_layout.addWidget(self.ramp_tolerance_slider)
+
+        self.extract_ramps_button = QPushButton("Extract Ramps from Graph")
+        self.extract_ramps_button.setEnabled(False)
+        self.extract_ramps_button.clicked.connect(self.extract_color_ramps)
+        controls_layout.addWidget(self.extract_ramps_button)
+
         layout.addWidget(self.controls_area, 1, 1)
 
         # Ensure all grid cells are equal
@@ -111,6 +131,8 @@ class RampWindow(QWidget):
             return
 
         # Always remove previous graph canvas first
+        self.color_graph = None
+        self.extract_ramps_button.setEnabled(False)
         if self.graph_canvas:
             self.graph_canvas.setParent(None)
             self.graph_canvas.deleteLater()
@@ -180,6 +202,9 @@ class RampWindow(QWidget):
 
         plt.close(fig)
 
+        self.color_graph = graph
+        self.extract_ramps_button.setEnabled(True)
+
     def update_threshold_controls(self):
         method = self.threshold_selector.currentText()
         if method == "Percentile-based":
@@ -212,4 +237,61 @@ class RampWindow(QWidget):
         elif method == "Absolute":
             self.threshold_value_label.setText(f"Min. number of occurrences:   ≥ {value}  ")
 
+    def extract_color_ramps(self):
+        if self.color_graph is None:
+            return
+
+        tolerance = self.ramp_tolerance_slider.value() / 100.0
+        ramps = self.find_color_ramps(self.color_graph, tolerance=tolerance)
+        self.display_color_ramps(ramps)
+
+    def find_color_ramps(self, graph, tolerance=0.1):
+        ramps = []
+        for start in graph.nodes:
+            stack = [(start, [start])]
+            while stack:
+                current, path = stack.pop()
+                for neighbor in graph.neighbors(current):
+                    if neighbor not in path:
+                        new_path = path + [neighbor]
+                        if self.is_valid_ramp(new_path, tolerance):
+                            ramps.append(new_path)
+                        stack.append((neighbor, new_path))
+        return ramps
+
+    @staticmethod
+    def is_valid_ramp(path, tolerance):
+        if len(path) < 3:
+            return False
+
+        hsv_values = np.array([color_to_hsv(c) for c in path])
+        diffs = np.diff(hsv_values, axis=0)
+        signs = np.sign(diffs)
+        second_diffs = np.diff(signs, axis=0)
+
+        return np.all(np.abs(second_diffs) <= tolerance * 10)
+
+    def display_color_ramps(self, ramps):
+        # Clear previous
+        for i in reversed(range(self.ramp_layout.count())):
+            item = self.ramp_layout.itemAt(i)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+
+        for ramp in ramps:
+            row = QHBoxLayout()
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(3)
+
+            for color in ramp:
+                r, g, b, a = color
+                swatch = QLabel()
+                swatch.setFixedSize(25, 25)
+                swatch.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
+                row_layout.addWidget(swatch)
+
+            self.ramp_layout.addWidget(row_widget)
 
