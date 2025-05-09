@@ -86,3 +86,10 @@ def get_text_descriptions(color):
         "hsv": f"HSV: ({h_deg}°, {s_pct}%, {v_pct}%)",
         "hex_raw": hex_str
     }
+
+def colors_similar(c1, c2, threshold):
+    hsv1 = np.array(color_to_hsv(c1))
+    hsv2 = np.array(color_to_hsv(c2))
+    diff = np.linalg.norm(hsv1 - hsv2)
+    return diff < threshold
+

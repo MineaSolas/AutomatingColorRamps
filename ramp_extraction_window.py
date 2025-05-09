@@ -1,12 +1,11 @@
 import networkx as nx
-import numpy as np
 from PyQt6.QtWidgets import QWidget, QGridLayout, QLabel, QSizePolicy, QFrame, QVBoxLayout, QPushButton, QHBoxLayout, \
     QComboBox, QSlider, QScrollArea
 from PyQt6.QtCore import Qt
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
-from color_utils import extract_adjacent_color_pairs
+from color_utils import extract_adjacent_color_pairs, colors_similar
 from image_viewer import ImageViewerWidget
 from ramp_analysis import find_color_ramps
 
@@ -34,8 +33,19 @@ class RampWindow(QWidget):
         self.color_graph = None
         self.use_8_neighbors = False
         self.graph_container = QFrame()
+
         graph_layout = QVBoxLayout()
         self.graph_container.setLayout(graph_layout)
+
+        topRow = QHBoxLayout()
+        self.graph_type_selector = QComboBox()
+        self.graph_type_selector.addItems(["Spatial Adjacency Graph", "Color Similarity Graph"])
+        topRow.addWidget(QLabel("Color Space Representation:  "))
+        topRow.addWidget(self.graph_type_selector, stretch=1)
+        graph_layout.addLayout(topRow)
+
+        self.graph_type_selector.currentTextChanged.connect(self.update_graph_controls_visibility)
+
         layout.addWidget(self.graph_container, 0, 1)
 
         self.graph_canvas = None
@@ -56,13 +66,12 @@ class RampWindow(QWidget):
         row1.addWidget(self.threshold_value_label)
         row1.addWidget(self.threshold_slider)
         controls_layout.addLayout(row1)
-
         # --- Row 2: Method dropdown + Generate button ---
         row2 = QHBoxLayout()
         self.threshold_selector = QComboBox()
         self.threshold_selector.addItems(["Relative to color frequency", "Percentile-based", "Absolute"])
         self.threshold_selector.currentTextChanged.connect(self.update_threshold_controls)
-        self.graph_button = QPushButton("Extract Adjacency Graph")
+        self.graph_button = QPushButton("Extract Graph")
         self.graph_button.clicked.connect(self.generate_graph)
         row2.addWidget(self.threshold_selector)
         row2.addWidget(self.graph_button)
@@ -70,6 +79,8 @@ class RampWindow(QWidget):
 
         # Trigger initial update
         self.update_threshold_controls()
+        self.update_graph_controls_visibility()
+
         graph_layout.addLayout(controls_layout)
 
         # Bottom-Left: Placeholder for palette
@@ -88,7 +99,7 @@ class RampWindow(QWidget):
         self.ramp_scroll_area.setWidgetResizable(True)
         self.ramp_container = QWidget()
         self.ramp_layout = QVBoxLayout(self.ramp_container)
-        self.ramp_layout.setContentsMargins(0, 0, 0, 0)
+        self.ramp_layout.setContentsMargins(20, 0, 0, 0)
         self.ramp_layout.setSpacing(0)
         self.ramp_scroll_area.setWidget(self.ramp_container)
         bottom_right_split.addWidget(self.ramp_scroll_area, 2)
@@ -100,7 +111,7 @@ class RampWindow(QWidget):
         self.extraction_method_selector = QComboBox()
         self.extraction_method_selector.addItems(["Basic HSV", "Vector HSV", "CIEDE2000"])
         self.extraction_method_selector.currentTextChanged.connect(self.update_extraction_controls)
-        controls_layout.addWidget(QLabel("Extraction Method"))
+        controls_layout.addWidget(QLabel("Ramp Extraction Method"))
         controls_layout.addWidget(self.extraction_method_selector)
 
         # Panels for controls
@@ -167,63 +178,90 @@ class RampWindow(QWidget):
         self.vector_controls.setVisible(method == "Vector HSV")
         self.ciede_controls.setVisible(method == "CIEDE2000")
 
+    def update_graph_controls_visibility(self):
+        selected_graph_type = self.graph_type_selector.currentText()
+        is_spatial = selected_graph_type == "Spatial Adjacency Graph"
+        self.threshold_selector.setVisible(is_spatial)
+        self.update_threshold_controls()
+
     def generate_graph(self):
         image_array = self.mini_viewer.get_image_array()
         if image_array is None:
             return
 
-        # Determine method and threshold
-        method_name = self.threshold_selector.currentText()
-        slider_value = self.threshold_slider.value()
-
-        if method_name == "Percentile-based":
-            method = "percentile"
-            value = slider_value
-        elif method_name == "Relative to color frequency":
-            method = "relative"
-            value = slider_value / 100.0
-        elif method_name == "Absolute":
-            method = "absolute"
-            value = slider_value
-        else:
-            return
-
         # Always remove previous graph canvas first
         self.color_graph = None
         self.extract_ramps_button.setEnabled(False)
-        if self.graph_canvas:
-            self.graph_canvas.setParent(None)
-            self.graph_canvas.deleteLater()
-            self.graph_canvas = None
 
-        # Restore placeholder if necessary (prevents layout collapse)
-        if self.graph_canvas_holder is None:
-            self.graph_canvas_holder = QWidget()
-            self.graph_canvas_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            self.graph_container.layout().insertWidget(0, self.graph_canvas_holder, stretch=1)
+        holder_layout = self.graph_canvas_holder.layout()
+        if holder_layout:
+            while holder_layout.count():
+                item = holder_layout.takeAt(0)
+                widget = item.widget()
+                if widget:
+                    widget.setParent(None)
 
-        # Extract adjacent color pairs using selected method
-        pair_counts = extract_adjacent_color_pairs(
-            image_array,
-            use_8_neighbors=self.use_8_neighbors,
-            threshold_value=value,
-            method=method
-        )
+        graph_type = self.graph_type_selector.currentText()
 
-        # If no pairs, don't build graph — placeholder already shown
-        if not pair_counts:
+        if graph_type == "Spatial Adjacency Graph":
+
+            method_name = self.threshold_selector.currentText()
+            slider_value = self.threshold_slider.value()
+
+            if method_name == "Percentile-based":
+                method = "percentile"
+                value = slider_value
+            elif method_name == "Relative to color frequency":
+                method = "relative"
+                value = slider_value / 100.0
+            elif method_name == "Absolute":
+                method = "absolute"
+                value = slider_value
+            else:
+                return
+
+            pair_counts = extract_adjacent_color_pairs(
+                image_array,
+                use_8_neighbors=self.use_8_neighbors,
+                threshold_value=value,
+                method=method
+            )
+
+            if not pair_counts:
+                return
+
+            graph = nx.Graph()
+            for (color1, color2), count in pair_counts.items():
+                graph.add_node(color1)
+                graph.add_node(color2)
+                graph.add_edge(color1, color2)
+
+        elif graph_type == "Color Similarity Graph":
+
+            similarity_threshold = self.threshold_slider.value() / 100.0
+            unique_colors = self.mini_viewer.color_palette.labels.keys()
+
+            graph = nx.Graph()
+
+            for c1 in unique_colors:
+                for c2 in unique_colors:
+                    if c1 == c2:
+                        continue
+
+                    if colors_similar(c1, c2, similarity_threshold):
+                        graph.add_node(c1)
+                        graph.add_node(c2)
+                        graph.add_edge(c1, c2)
+        else:
             return
-
-        # Build graph
-        graph = nx.Graph()
-        for (color1, color2), count in pair_counts.items():
-            graph.add_node(color1)
-            graph.add_node(color2)
-            graph.add_edge(color1, color2)
 
         # Create matplotlib figure
         fig, ax = plt.subplots(figsize=(6, 6))
         pos = nx.kamada_kawai_layout(graph)
+
+        # Create new canvas
+        self.graph_canvas = FigureCanvas(fig)
+        self.graph_canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Draw nodes
         for node in graph.nodes:
@@ -247,53 +285,74 @@ class RampWindow(QWidget):
 
         ax.set_axis_off()
 
-        # Create new canvas and replace placeholder
-        self.graph_canvas = FigureCanvas(fig)
-        self.graph_canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-
-        if self.graph_canvas_holder:
-            self.graph_container.layout().replaceWidget(self.graph_canvas_holder, self.graph_canvas)
-            self.graph_canvas_holder.setParent(None)
-            self.graph_canvas_holder = None
-        else:
-            self.graph_container.layout().insertWidget(0, self.graph_canvas, stretch=1)
-
         plt.close(fig)
+
+        holder_layout = self.graph_canvas_holder.layout()
+        if holder_layout is None:
+            holder_layout = QVBoxLayout()
+            holder_layout.setContentsMargins(0, 0, 0, 0)
+            self.graph_canvas_holder.setLayout(holder_layout)
+        else:
+            # Clear the existing widgets from the layout
+            while holder_layout.count():
+                item = holder_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.setParent(None)
+
+        holder_layout.addWidget(self.graph_canvas)
 
         self.color_graph = graph
         self.extract_ramps_button.setEnabled(True)
 
     def update_threshold_controls(self):
-        method = self.threshold_selector.currentText()
-        if method == "Percentile-based":
+        graph_type = self.graph_type_selector.currentText()
+
+        if graph_type == "Color Similarity Graph":
             self.threshold_slider.setMinimum(1)
             self.threshold_slider.setMaximum(100)
             self.threshold_slider.setSingleStep(1)
-            self.threshold_slider.setValue(90)
-        elif method == "Relative to color frequency":
-            self.threshold_slider.setMinimum(1)
-            self.threshold_slider.setMaximum(400)
-            self.threshold_slider.setSingleStep(1)
-            self.threshold_slider.setValue(20)
-        elif method == "Absolute":
-            img = self.mini_viewer.get_image_array()
-            h, w, _ = img.shape
-            max_pairs = (h * w) // 4 or 3
-            self.threshold_slider.setMinimum(1)
-            self.threshold_slider.setMaximum(max_pairs)
-            self.threshold_slider.setSingleStep(1)
-            self.threshold_slider.setValue(max_pairs // 20 or 3)
+            self.threshold_slider.setValue(50)
+            self.threshold_selector.setVisible(False)
+        elif graph_type == "Spatial Adjacency Graph":
+            self.threshold_selector.setVisible(True)
+            method = self.threshold_selector.currentText()
+
+            if method == "Percentile-based":
+                self.threshold_slider.setMinimum(1)
+                self.threshold_slider.setMaximum(100)
+                self.threshold_slider.setSingleStep(1)
+                self.threshold_slider.setValue(90)
+            elif method == "Relative to color frequency":
+                self.threshold_slider.setMinimum(1)
+                self.threshold_slider.setMaximum(400)
+                self.threshold_slider.setSingleStep(1)
+                self.threshold_slider.setValue(20)
+            elif method == "Absolute":
+                img = self.mini_viewer.get_image_array()
+                h, w, _ = img.shape
+                max_pairs = (h * w) // 4 or 3
+                self.threshold_slider.setMinimum(1)
+                self.threshold_slider.setMaximum(max_pairs)
+                self.threshold_slider.setSingleStep(1)
+                self.threshold_slider.setValue(max_pairs // 20 or 3)
+
         self.update_threshold_label()
 
     def update_threshold_label(self):
-        method = self.threshold_selector.currentText()
+        graph_type = self.graph_type_selector.currentText()
         value = self.threshold_slider.value()
-        if method == "Percentile-based":
-            self.threshold_value_label.setText(f"Min. percentile:   {value}%  ")
-        elif method == "Relative to color frequency":
-            self.threshold_value_label.setText(f"Min. relative adjacency strength:   ≥ {value / 400:.3f}  ")
-        elif method == "Absolute":
-            self.threshold_value_label.setText(f"Min. number of occurrences:   ≥ {value}  ")
+
+        if graph_type == "Color Similarity Graph":
+            self.threshold_value_label.setText(f"Similarity threshold:   ≤ {value / 100:.2f}")
+        else:
+            method = self.threshold_selector.currentText()
+            if method == "Percentile-based":
+                self.threshold_value_label.setText(f"Min. percentile:   {value}%  ")
+            elif method == "Relative to color frequency":
+                self.threshold_value_label.setText(f"Min. relative adjacency strength:   ≥ {value / 400:.3f}  ")
+            elif method == "Absolute":
+                self.threshold_value_label.setText(f"Min. number of occurrences:   ≥ {value}  ")
 
     def extract_color_ramps(self):
         if self.color_graph is None:
