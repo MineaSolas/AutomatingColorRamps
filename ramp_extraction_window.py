@@ -8,6 +8,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
 from color_utils import extract_adjacent_color_pairs, color_to_hsv
 from image_viewer import ImageViewerWidget
+from ramp_analysis import find_color_ramps, find_color_ramps_vector_hsv
 
 
 class RampWindow(QWidget):
@@ -78,36 +79,85 @@ class RampWindow(QWidget):
         self.ramp_display.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.ramp_display, 1, 0)
 
-        # Bottom-Right: Ramps
-        self.controls_area = QWidget()
-        controls_layout = QVBoxLayout(self.controls_area)
+        # Bottom-Right: Two columns: Ramps | Controls
+        bottom_right_split = QHBoxLayout()
+        layout.addLayout(bottom_right_split, 1, 1)
 
+        # Left: Ramp scroll area
         self.ramp_scroll_area = QScrollArea()
         self.ramp_scroll_area.setWidgetResizable(True)
         self.ramp_container = QWidget()
         self.ramp_layout = QVBoxLayout(self.ramp_container)
+        self.ramp_layout.setContentsMargins(0, 0, 0, 0)
+        self.ramp_layout.setSpacing(0)
         self.ramp_scroll_area.setWidget(self.ramp_container)
-        controls_layout.addWidget(self.ramp_scroll_area)
+        bottom_right_split.addWidget(self.ramp_scroll_area, 2)
 
-        self.ramp_tolerance_slider = QSlider(Qt.Orientation.Horizontal)
-        self.ramp_tolerance_slider.setMinimum(1)
-        self.ramp_tolerance_slider.setMaximum(100)
-        self.ramp_tolerance_slider.setValue(10)  # Default tolerance: 0.10
-        controls_layout.addWidget(QLabel("Ramp Smoothness Tolerance"))
-        controls_layout.addWidget(self.ramp_tolerance_slider)
+        # Right: Controls
+        self.controls_panel = QWidget()
+        controls_layout = QVBoxLayout(self.controls_panel)
 
+        self.extraction_method_selector = QComboBox()
+        self.extraction_method_selector.addItems(["Basic HSV", "Vector HSV"])
+        self.extraction_method_selector.currentTextChanged.connect(self.update_extraction_controls)
+        controls_layout.addWidget(QLabel("Extraction Method"))
+        controls_layout.addWidget(self.extraction_method_selector)
+
+        # Panels for controls
+        self.basic_controls = QWidget()
+        basic_layout = QVBoxLayout(self.basic_controls)
+
+        self.h_slider = self.create_labeled_slider("Max Hue Step (˚)", 0, 180, 60, basic_layout)
+        self.h_tolerance_slider = self.create_labeled_slider("Hue Step Variance Tolerance (˚)", 0, 100, 30, basic_layout)
+        self.s_slider = self.create_labeled_slider("Max Saturation Step", 0, 100, 50, basic_layout)
+        self.s_tolerance_slider = self.create_labeled_slider("Saturation Step Variance Tolerance", 0, 100, 20, basic_layout)
+        self.v_slider = self.create_labeled_slider("Max Brightness Step", 0, 100, 50, basic_layout)
+        self.v_tolerance_slider = self.create_labeled_slider("Brightness Step Variance Tolerance", 0, 100, 20, basic_layout)
+
+        controls_layout.addWidget(self.basic_controls)
+
+        # Vector HSV Controls
+        self.vector_controls = QWidget()
+        vector_layout = QVBoxLayout(self.vector_controls)
+
+        self.vector_angle_tolerance_slider = self.create_labeled_slider("Angle Tolerance (°)", 0, 180, 15, vector_layout)
+        self.vector_step_size_slider = self.create_labeled_slider("Max Step Size", 0, 100, 20, vector_layout)
+
+        self.vector_controls.hide()
+        controls_layout.addWidget(self.vector_controls)
+
+        controls_layout.addStretch()
         self.extract_ramps_button = QPushButton("Extract Ramps from Graph")
         self.extract_ramps_button.setEnabled(False)
         self.extract_ramps_button.clicked.connect(self.extract_color_ramps)
         controls_layout.addWidget(self.extract_ramps_button)
-
-        layout.addWidget(self.controls_area, 1, 1)
+        bottom_right_split.addWidget(self.controls_panel, 1)
 
         # Ensure all grid cells are equal
         layout.setRowStretch(0, 1)
         layout.setRowStretch(1, 1)
         layout.setColumnStretch(0, 1)
         layout.setColumnStretch(1, 1)
+
+    def create_labeled_slider(self, label_text, min_val, max_val, default, layout):
+        label = QLabel(f"{label_text}: {default}")
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setMinimum(min_val)
+        slider.setMaximum(max_val)
+        slider.setValue(default)
+        slider.valueChanged.connect(lambda val: label.setText(f"{label_text}: {val}"))
+        layout.addWidget(label)
+        layout.addWidget(slider)
+        return slider
+
+    def update_extraction_controls(self):
+        method = self.extraction_method_selector.currentText()
+        if method == "Basic HSV":
+            self.basic_controls.show()
+            self.vector_controls.hide()
+        elif method == "Vector HSV":
+            self.basic_controls.hide()
+            self.vector_controls.show()
 
     def generate_graph(self):
         image_array = self.mini_viewer.get_image_array()
@@ -216,7 +266,7 @@ class RampWindow(QWidget):
             self.threshold_slider.setMinimum(1)
             self.threshold_slider.setMaximum(400)
             self.threshold_slider.setSingleStep(1)
-            self.threshold_slider.setValue(40)
+            self.threshold_slider.setValue(20)
         elif method == "Absolute":
             img = self.mini_viewer.get_image_array()
             h, w, _ = img.shape
@@ -241,79 +291,34 @@ class RampWindow(QWidget):
         if self.color_graph is None:
             return
 
-        tolerance = self.ramp_tolerance_slider.value() / 100.0
-        ramps = self.find_color_ramps(self.color_graph, tolerance=tolerance)
+        method = self.extraction_method_selector.currentText()
+
+        if method == "Basic HSV":
+            max_step = [
+                self.h_slider.value() / 180.0,
+                self.s_slider.value() / 100.0,
+                self.v_slider.value() / 100.0,
+            ]
+            tolerance = [
+                self.h_tolerance_slider.value() / 180.0,
+                self.s_tolerance_slider.value() / 100.0,
+                self.v_tolerance_slider.value() / 100.0,
+            ]
+            ramps = find_color_ramps(self.color_graph, tolerance, max_step)
+
+        elif method == "Vector HSV":
+            angle_tolerance_deg = self.vector_angle_tolerance_slider.value()
+            max_step_size = self.vector_step_size_slider.value() / 100.0
+            ramps = find_color_ramps_vector_hsv(
+                self.color_graph,
+                angle_tolerance_deg,
+                max_step_size
+            )
+
+        else:
+            return
+
         self.display_color_ramps(ramps)
-
-    def find_color_ramps(self, graph, tolerance=0.1):
-        ramps = []
-        visited_nodes = set()
-
-        sorted_nodes = sorted(graph.nodes, key=lambda c: color_to_hsv(c)[2])  # sort by brightness
-
-        for start in sorted_nodes:
-            if start in visited_nodes:
-                continue
-
-            stack = [(start, [start])]
-            while stack:
-                current, path = stack.pop()
-                extended = False
-                for neighbor in graph.neighbors(current):
-                    if neighbor in path:
-                        continue
-                    new_path = path + [neighbor]
-                    if self.is_valid_ramp(new_path, tolerance):
-                        stack.append((neighbor, new_path))
-                        extended = True
-                if not extended and len(path) >= 3 and self.is_unique_ramp(path, ramps):
-                    ramps.append(path)
-                    visited_nodes.update(path)
-
-        return ramps
-
-    def is_valid_ramp(self, path, tolerance):
-        hsv_values = np.array([color_to_hsv(c) for c in path])
-        diffs = np.diff(hsv_values, axis=0)
-
-        for i in range(3):  # H, S, V
-            comp_diffs = diffs[:, i]
-            if not self.is_consistent_direction(comp_diffs):
-                return False
-            if not self.is_consistent_step_size(comp_diffs, tolerance):
-                return False
-
-        return True
-
-    @staticmethod
-    def is_consistent_direction(deltas):
-        non_zero = deltas[np.abs(deltas) > 1e-5]
-        if len(non_zero) == 0:
-            return False
-        signs = np.sign(non_zero)
-        return np.all(signs == signs[0])  # All positive or all negative
-
-    @staticmethod
-    def is_consistent_step_size(deltas, tolerance):
-        non_zero = deltas[np.abs(deltas) > 1e-5]
-        if len(non_zero) < 2:
-            return True
-        step_diffs = np.diff(non_zero)
-        return np.all(np.abs(step_diffs) <= tolerance)
-
-    def is_unique_ramp(self, new_ramp, existing_ramps):
-        for ramp in existing_ramps:
-            if self.is_subsequence(new_ramp, ramp) or self.is_subsequence(new_ramp[::-1], ramp):
-                return False
-        return True
-
-    @staticmethod
-    def is_subsequence(sub, full):
-        sub_len = len(sub)
-        for i in range(len(full) - sub_len + 1):
-            if all(sub[j] == full[i + j] for j in range(sub_len)):
-                return True
-        return False
 
     def display_color_ramps(self, ramps):
         # Clear previous ramp layout
