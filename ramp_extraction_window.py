@@ -247,32 +247,76 @@ class RampWindow(QWidget):
 
     def find_color_ramps(self, graph, tolerance=0.1):
         ramps = []
-        for start in graph.nodes:
+        visited_nodes = set()
+
+        sorted_nodes = sorted(graph.nodes, key=lambda c: color_to_hsv(c)[2])  # sort by brightness
+
+        for start in sorted_nodes:
+            if start in visited_nodes:
+                continue
+
             stack = [(start, [start])]
             while stack:
                 current, path = stack.pop()
+                extended = False
                 for neighbor in graph.neighbors(current):
-                    if neighbor not in path:
-                        new_path = path + [neighbor]
-                        if self.is_valid_ramp(new_path, tolerance):
-                            ramps.append(new_path)
+                    if neighbor in path:
+                        continue
+                    new_path = path + [neighbor]
+                    if self.is_valid_ramp(new_path, tolerance):
                         stack.append((neighbor, new_path))
+                        extended = True
+                if not extended and len(path) >= 3 and self.is_unique_ramp(path, ramps):
+                    ramps.append(path)
+                    visited_nodes.update(path)
+
         return ramps
 
-    @staticmethod
-    def is_valid_ramp(path, tolerance):
-        if len(path) < 3:
-            return False
-
+    def is_valid_ramp(self, path, tolerance):
         hsv_values = np.array([color_to_hsv(c) for c in path])
         diffs = np.diff(hsv_values, axis=0)
-        signs = np.sign(diffs)
-        second_diffs = np.diff(signs, axis=0)
 
-        return np.all(np.abs(second_diffs) <= tolerance * 10)
+        for i in range(3):  # H, S, V
+            comp_diffs = diffs[:, i]
+            if not self.is_consistent_direction(comp_diffs):
+                return False
+            if not self.is_consistent_step_size(comp_diffs, tolerance):
+                return False
+
+        return True
+
+    @staticmethod
+    def is_consistent_direction(deltas):
+        non_zero = deltas[np.abs(deltas) > 1e-5]
+        if len(non_zero) == 0:
+            return False
+        signs = np.sign(non_zero)
+        return np.all(signs == signs[0])  # All positive or all negative
+
+    @staticmethod
+    def is_consistent_step_size(deltas, tolerance):
+        non_zero = deltas[np.abs(deltas) > 1e-5]
+        if len(non_zero) < 2:
+            return True
+        step_diffs = np.diff(non_zero)
+        return np.all(np.abs(step_diffs) <= tolerance)
+
+    def is_unique_ramp(self, new_ramp, existing_ramps):
+        for ramp in existing_ramps:
+            if self.is_subsequence(new_ramp, ramp) or self.is_subsequence(new_ramp[::-1], ramp):
+                return False
+        return True
+
+    @staticmethod
+    def is_subsequence(sub, full):
+        sub_len = len(sub)
+        for i in range(len(full) - sub_len + 1):
+            if all(sub[j] == full[i + j] for j in range(sub_len)):
+                return True
+        return False
 
     def display_color_ramps(self, ramps):
-        # Clear previous
+        # Clear previous ramp layout
         for i in reversed(range(self.ramp_layout.count())):
             item = self.ramp_layout.itemAt(i)
             widget = item.widget()
@@ -280,18 +324,27 @@ class RampWindow(QWidget):
                 widget.setParent(None)
 
         for ramp in ramps:
-            row = QHBoxLayout()
             row_widget = QWidget()
+            row_widget.setContentsMargins(0, 0, 0, 0)
+            row_widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
             row_layout = QHBoxLayout(row_widget)
             row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.setSpacing(3)
+            row_layout.setSpacing(0)
 
             for color in ramp:
                 r, g, b, a = color
                 swatch = QLabel()
                 swatch.setFixedSize(25, 25)
-                swatch.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
+                swatch.setStyleSheet(f"""
+                    background-color: rgba({r},{g},{b},{a});
+                    margin: 0px;
+                    padding: 0px;
+                    border: none;
+                """)
+                swatch.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
                 row_layout.addWidget(swatch)
 
             self.ramp_layout.addWidget(row_widget)
+
 
