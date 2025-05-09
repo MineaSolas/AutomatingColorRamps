@@ -180,8 +180,15 @@ class RampWindow(QWidget):
 
     def update_graph_controls_visibility(self):
         selected_graph_type = self.graph_type_selector.currentText()
-        is_spatial = selected_graph_type == "Spatial Adjacency Graph"
-        self.threshold_selector.setVisible(is_spatial)
+
+        if selected_graph_type == "Spatial Adjacency Graph":
+            self.threshold_selector.clear()
+            self.threshold_selector.addItems(["Relative to color frequency", "Percentile-based", "Absolute"])
+
+        elif selected_graph_type == "Color Similarity Graph":
+            self.threshold_selector.clear()
+            self.threshold_selector.addItems(["HSV", "CIEDE2000"])
+
         self.update_threshold_controls()
 
     def generate_graph(self):
@@ -238,20 +245,20 @@ class RampWindow(QWidget):
 
         elif graph_type == "Color Similarity Graph":
 
-            similarity_threshold = self.threshold_slider.value() / 100.0
+            similarity_threshold = self.threshold_slider.value()
+            similarity_method = self.threshold_selector.currentText()
             unique_colors = self.mini_viewer.color_palette.labels.keys()
 
             graph = nx.Graph()
-
             for c1 in unique_colors:
                 for c2 in unique_colors:
                     if c1 == c2:
                         continue
-
-                    if colors_similar(c1, c2, similarity_threshold):
+                    if colors_similar(c1, c2, similarity_threshold, method=similarity_method):
                         graph.add_node(c1)
                         graph.add_node(c2)
                         graph.add_edge(c1, c2)
+
         else:
             return
 
@@ -309,11 +316,19 @@ class RampWindow(QWidget):
         graph_type = self.graph_type_selector.currentText()
 
         if graph_type == "Color Similarity Graph":
-            self.threshold_slider.setMinimum(1)
-            self.threshold_slider.setMaximum(100)
-            self.threshold_slider.setSingleStep(1)
-            self.threshold_slider.setValue(50)
-            self.threshold_selector.setVisible(False)
+            method = self.threshold_selector.currentText()
+
+            if method == "HSV":
+                self.threshold_slider.setMinimum(1)
+                self.threshold_slider.setMaximum(100)
+                self.threshold_slider.setSingleStep(1)
+                self.threshold_slider.setValue(50)
+            elif method == "CIEDE2000":
+                self.threshold_slider.setMinimum(1)
+                self.threshold_slider.setMaximum(100)
+                self.threshold_slider.setSingleStep(1)
+                self.threshold_slider.setValue(40)
+
         elif graph_type == "Spatial Adjacency Graph":
             self.threshold_selector.setVisible(True)
             method = self.threshold_selector.currentText()
@@ -322,7 +337,7 @@ class RampWindow(QWidget):
                 self.threshold_slider.setMinimum(1)
                 self.threshold_slider.setMaximum(100)
                 self.threshold_slider.setSingleStep(1)
-                self.threshold_slider.setValue(90)
+                self.threshold_slider.setValue(50)
             elif method == "Relative to color frequency":
                 self.threshold_slider.setMinimum(1)
                 self.threshold_slider.setMaximum(400)
@@ -344,7 +359,11 @@ class RampWindow(QWidget):
         value = self.threshold_slider.value()
 
         if graph_type == "Color Similarity Graph":
-            self.threshold_value_label.setText(f"Similarity threshold:   ≤ {value / 100:.2f}")
+            method = self.threshold_selector.currentText()
+            if method == "HSV":
+                self.threshold_value_label.setText(f"Similarity (HSV): ≤ {value / 100:.2f}")
+            elif method == "CIEDE2000":
+                self.threshold_value_label.setText(f"Similarity (ΔE): ≤ {value}")
         else:
             method = self.threshold_selector.currentText()
             if method == "Percentile-based":
