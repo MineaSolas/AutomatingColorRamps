@@ -63,6 +63,7 @@ class ImageViewerWidget(QWidget):
 
     def _setup_color_overlay(self):
         self.colorDetails = QWidget(self.scrollArea)
+        self.colorDetails.setMinimumWidth(160)
         self.colorDetails.setStyleSheet("""
             background-color: white;
             border: 2px solid #999;
@@ -87,7 +88,10 @@ class ImageViewerWidget(QWidget):
 
         for label in [self.colorTextRGB, self.colorTextHEX, self.colorTextHSV]:
             label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            label.setStyleSheet("font-size: 10pt;")
+            label.setStyleSheet("""
+                font-size: 10pt;
+                border: none;
+            """)
             overlay.addWidget(label)
 
         # Prevent clicks inside overlay from affecting selection logic
@@ -96,14 +100,17 @@ class ImageViewerWidget(QWidget):
 
         self.colorDetails.hide()
 
-    def load_image(self, file_path=None):
-        if not file_path:
-            from PyQt6.QtWidgets import QFileDialog
-            file_path, _ = QFileDialog.getOpenFileName(self, "Open Image", "", "Images (*.png *.jpg *.bmp)")
+    def load_image(self, pixmap = None, file_path=None):
+        if pixmap:
+            self.original_pixmap = pixmap
+        else:
             if not file_path:
-                return
+                from PyQt6.QtWidgets import QFileDialog
+                file_path, _ = QFileDialog.getOpenFileName(self, "Open Image", "", "Images (*.png *.jpg *.bmp)")
+                if not file_path:
+                    return
+            self.original_pixmap = QPixmap(file_path)
 
-        self.original_pixmap = QPixmap(file_path)
         if not self.original_pixmap.isNull():
             self.set_initial_fit_zoom()
             self.update_image()

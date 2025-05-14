@@ -11,22 +11,18 @@ from ramp_analysis import find_color_ramps
 
 
 class RampWindow(QWidget):
-    def __init__(self, original_pixmap):
+    def __init__(self, loaded_pixmap):
         super().__init__()
         self.setWindowTitle("Color Ramp Extraction")
-        self.setMinimumSize(1600, 900)
+        self.resize(1600, 900)
 
         layout = QGridLayout(self)
         layout.setSpacing(6)
         layout.setContentsMargins(6, 6, 6, 6)
 
-        # Top-Left: Mini viewer
+        # Top-Left: Image viewer
         self.mini_viewer = ImageViewerWidget(show_load_button=False, palette_square_size=25)
-        self.mini_viewer.setMaximumSize(800, 450)
-        self.mini_viewer.original_pixmap = original_pixmap
-        self.mini_viewer.extract_unique_colors()
-        self.mini_viewer.set_initial_fit_zoom()
-        self.mini_viewer.update_image()
+        self.mini_viewer.load_image(pixmap=loaded_pixmap)
         layout.addWidget(self.mini_viewer, 0, 0)
 
         # Top-Right: Graph container
