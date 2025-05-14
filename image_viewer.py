@@ -1,3 +1,4 @@
+from PyQt6 import QtCore
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QSizePolicy, QScrollArea
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QImage, QColor
@@ -28,6 +29,9 @@ class ImageViewerWidget(QWidget):
 
         self.scrollArea = QScrollArea()
         self.scrollArea.setWidgetResizable(False)
+        self.scrollArea.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.scrollArea.installEventFilter(self)
+
         self.imageLabel = QLabel()
         self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.imageLabel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
@@ -35,6 +39,8 @@ class ImageViewerWidget(QWidget):
         self.imageLabel.setMouseTracking(True)
         self.imageLabel.mousePressEvent = self.image_mouse_click
         self.imageLabel.mouseMoveEvent = self.image_mouse_move
+        self.imageLabel.leaveEvent = self.image_mouse_leave
+
         self.scrollArea.setWidget(self.imageLabel)
         self.layout.addWidget(self.scrollArea, stretch=1)
 
@@ -56,22 +62,39 @@ class ImageViewerWidget(QWidget):
         self.layout.addLayout(hbox)
 
     def _setup_color_overlay(self):
-        self.colorDetails = QWidget(self.imageLabel)
-        overlay = QVBoxLayout(self.colorDetails)
-        overlay.setContentsMargins(5, 5, 5, 5)
+        self.colorDetails = QWidget(self.scrollArea)
+        self.colorDetails.setStyleSheet("""
+            background-color: white;
+            border: 2px solid #999;
+        """)
+        self.colorDetails.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.colorDetails.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)  # Allow interaction
 
+        overlay = QVBoxLayout(self.colorDetails)
+        overlay.setContentsMargins(8, 8, 8, 8)
+        overlay.setSpacing(6)
+
+        # Color Swatch
         self.colorSwatch = QLabel()
         self.colorSwatch.setFixedHeight(40)
+        self.colorSwatch.setStyleSheet("background-color: #ffffff; border: 1px solid #000;")
         overlay.addWidget(self.colorSwatch)
 
+        # Color Value Labels (Selectable Text)
         self.colorTextRGB = QLabel("RGB: -")
         self.colorTextHEX = QLabel("HEX: -")
         self.colorTextHSV = QLabel("HSV: -")
+
         for label in [self.colorTextRGB, self.colorTextHEX, self.colorTextHSV]:
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            label.setStyleSheet("font-size: 10pt;")
             overlay.addWidget(label)
 
+        # Prevent clicks inside overlay from affecting selection logic
+        self.colorDetails.mousePressEvent = lambda event: event.accept()
+        self.colorDetails.mouseMoveEvent = lambda event: event.accept()
+
         self.colorDetails.hide()
-        self.colorSwatch.setStyleSheet("background-color: #fff; border: 1px solid #000;")
 
     def load_image(self, file_path=None):
         if not file_path:
@@ -203,6 +226,17 @@ class ImageViewerWidget(QWidget):
             selection_manager.select_color(color)
         else:
             selection_manager.clear_selection()
+
+    @staticmethod
+    def image_mouse_leave(event):
+        selection_manager.clear_hover()
+
+    def eventFilter(self, obj, event):
+        if obj == self.scrollArea and event.type() == QtCore.QEvent.Type.MouseButtonPress:
+            clicked_widget = self.childAt(event.position().toPoint())
+            if clicked_widget not in [self.imageLabel, self.colorDetails]:
+                selection_manager.clear_selection()
+        return super().eventFilter(obj, event)
 
     def get_image_color_at_pos(self, pos):
         if not self.original_pixmap or not self.imageLabel.pixmap():
