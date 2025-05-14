@@ -1,31 +1,55 @@
-from PyQt6.QtWidgets import QLabel, QWidget, QVBoxLayout
+from PyQt6.QtWidgets import QLabel, QWidget
 from PyQt6.QtCore import Qt
 
+from flow_layout import FlowLayout
 from color_utils import get_highlight_color
-from ui.flow_layout import FlowLayout
+from color_selection_manager import ColorSelectionManager
+
+selection_manager = ColorSelectionManager()
 
 class ColorLabel(QLabel):
-    def __init__(self, color, viewer, size=40, parent=None):
+    def __init__(self, color, size=40, parent=None):
         super().__init__(parent)
         self.color = color
-        self.viewer = viewer
         self.setFixedSize(size, size)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_border()
+
+        # Listen for selection changes to update border
+        selection_manager.register_listener(self.on_selection_change)
 
     def mousePressEvent(self, event):
-        self.viewer.show_color_info(self.color, is_hover=False)
+        selection_manager.select_color(self.color)
 
     def enterEvent(self, event):
-        self.viewer.show_color_info(self.color, is_hover=True)
+        selection_manager.hover_color(self.color)
 
     def leaveEvent(self, event):
-        self.viewer.clear_hover()
+        selection_manager.clear_hover()
+
+    def on_selection_change(self, selected_color, hovered_color):
+        self.update_border()
+
+    def update_border(self):
+        is_selected = selection_manager.selected_color == self.color
+        is_hovered = selection_manager.hovered_color == self.color
+
+        if is_hovered:
+            self.setStyleSheet(f"background-color: rgba{self.color}; border: 4px solid {selection_manager.highlight_color};")
+        elif is_selected:
+            selected_border_color = get_highlight_color(self.color)
+            self.setStyleSheet(f"background-color: rgba{self.color}; border: 6px solid {selected_border_color};")
+        else:
+            self.setStyleSheet(f"background-color: rgba{self.color}; border: 1px solid #000;")
+
+    def deleteLater(self):
+        selection_manager.unregister_listener(self.on_selection_change)
+        super().deleteLater()
 
 
 class ColorPalette(QWidget):
-    def __init__(self, viewer, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.viewer = viewer
         self.labels = {}
         self.layout = FlowLayout(spacing=5)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -34,7 +58,7 @@ class ColorPalette(QWidget):
     def populate(self, colors, square_size=40):
         self.clear()
         for color in colors:
-            label = ColorLabel(color, self.viewer, size=square_size)
+            label = ColorLabel(color, size=square_size)
             r, g, b, a = color
             label.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
             self.labels[color] = label
@@ -45,17 +69,3 @@ class ColorPalette(QWidget):
             self.layout.removeWidget(label)
             label.deleteLater()
         self.labels.clear()
-
-    def update_borders(self, selected_color, hovered_color, selected_border_color):
-        for color, label in self.labels.items():
-            is_selected = selected_color and color[:3] == selected_color[:3]
-            is_hovered = hovered_color and color[:3] == hovered_color[:3]
-
-            if is_hovered:
-                border_color = get_highlight_color(color)
-                label.setStyleSheet(f"background-color: rgba{color}; border: 4px solid {border_color};")
-            elif is_selected:
-                label.setStyleSheet(f"background-color: rgba{color}; border: 6px solid {selected_border_color};")
-            else:
-                label.setStyleSheet(f"background-color: rgba{color}; border: 1px solid #000;")
-
