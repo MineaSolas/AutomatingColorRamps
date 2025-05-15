@@ -147,7 +147,7 @@ class ImageViewer(QWidget):
         container_size = self.scrollArea.size()
         image_size = self.original_pixmap.size()
         zoom = min(container_size.width() / image_size.width(), container_size.height() / image_size.height())
-        slider_val = int(round(math.log(zoom) / math.log(1.16) + 20))
+        slider_val = max(1, int(round(math.log(zoom) / math.log(1.16) + 20)) - 2)
         self.zoomSlider.setValue(max(self.zoomSlider.minimum(), min(slider_val, self.zoomSlider.maximum())))
 
     def extract_unique_colors(self):
