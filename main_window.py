@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QPushButton
-from image_viewer import ImageViewerWidget
+from image_viewer import ImageViewer
 from ramp_extraction_window import RampWindow
 
 
@@ -13,7 +13,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.layout = QVBoxLayout(central_widget)
 
-        self.viewer = ImageViewerWidget()
+        self.viewer = ImageViewer()
         self.layout.addWidget(self.viewer, stretch=1)
 
         self.extract_button = QPushButton("Extract Color Ramps")

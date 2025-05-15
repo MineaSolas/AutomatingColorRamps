@@ -10,7 +10,7 @@ from color_utils import get_text_descriptions
 from palette import ColorPalette, selection_manager
 
 
-class ImageViewerWidget(QWidget):
+class ImageViewer(QWidget):
     def __init__(self, show_load_button=True, palette_square_size=40):
         super().__init__()
         self.original_pixmap = None
