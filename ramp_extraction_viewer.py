@@ -1,7 +1,7 @@
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider, QPushButton,
-    QScrollArea, QSizePolicy, QCheckBox
+    QScrollArea, QSizePolicy, QCheckBox, QGroupBox, QGridLayout
 )
 from PyQt6.QtCore import Qt
 from colormath.color_conversions import convert_color
@@ -9,6 +9,7 @@ from colormath.color_objects import sRGBColor, LabColor
 from pyciede2000 import ciede2000
 
 from color_utils import color_to_hsv, hsv_diffs
+from ui_helpers import VerticalLabel
 
 
 class RampExtractionViewer(QWidget):
@@ -19,26 +20,12 @@ class RampExtractionViewer(QWidget):
 
     def _setup_ui(self):
         main_layout = QHBoxLayout(self)
+        main_layout.setSpacing(0)
 
-        # --- Left: Ramp Display Area ---
-        self.ramps_scroll_area = QScrollArea()
-        self.ramps_scroll_area.setWidgetResizable(True)
-        self.ramp_container = QWidget()
-        self.ramps_layout = QVBoxLayout(self.ramp_container)
-        self.ramps_layout.setSpacing(5)
-        self.ramps_scroll_area.setWidget(self.ramp_container)
-
-        main_layout.addWidget(self.ramps_scroll_area, stretch=1)
-
-        # --- Right: Controls Panel ---
+        # --- Left: Controls Panel ---
         controls_panel = QWidget()
         controls_layout = QVBoxLayout(controls_panel)
-
-        self.extraction_method_selector = QComboBox()
-        self.extraction_method_selector.addItems(["Basic HSV", "Vector HSV", "CIEDE2000"])
-        self.extraction_method_selector.currentTextChanged.connect(self.update_extraction_controls)
-        controls_layout.addWidget(QLabel("Ramp Extraction Method"))
-        controls_layout.addWidget(self.extraction_method_selector)
+        controls_panel.setMinimumWidth(300)
 
         # Control Panels for Each Method
         self.basic_controls = self._create_basic_controls()
@@ -53,6 +40,7 @@ class RampExtractionViewer(QWidget):
         self.ciede_controls.hide()
 
         controls_layout.addStretch()
+        controls_layout.setContentsMargins(0, 0, 0, 0)
 
         # Extract Button
         self.extract_button = QPushButton("Extract Ramps")
@@ -61,38 +49,108 @@ class RampExtractionViewer(QWidget):
 
         main_layout.addWidget(controls_panel, stretch=0)
 
+        # --- Right Panel: Method Dropdown and Ramps ---
+        left_panel = QWidget()
+        left_panel_layout = QVBoxLayout(left_panel)
+
+        # Dropdown row
+        method_selection_row = QHBoxLayout()
+        method_label = QLabel("Ramp Extraction Method:")
+        self.extraction_method_selector = QComboBox()
+        self.extraction_method_selector.addItems(["Basic HSV", "Vector HSV", "CIEDE2000"])
+        self.extraction_method_selector.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.extraction_method_selector.currentTextChanged.connect(self.update_extraction_controls)
+        method_selection_row.addWidget(method_label)
+        method_selection_row.addWidget(self.extraction_method_selector)
+        left_panel_layout.addLayout(method_selection_row)
+
+        # Ramps scroll area
+        self.ramps_scroll_area = QScrollArea()
+        self.ramps_scroll_area.setWidgetResizable(True)
+        self.ramp_container = QWidget()
+        self.ramps_layout = QVBoxLayout(self.ramp_container)
+        self.ramps_layout.setSpacing(5)
+        self.ramps_scroll_area.setWidget(self.ramp_container)
+        left_panel_layout.addWidget(self.ramps_scroll_area, stretch=1)
+
+        main_layout.addWidget(left_panel, stretch=1)
+
     def _create_basic_controls(self):
         widget = QWidget()
-        layout = QVBoxLayout(widget)
+        layout = QGridLayout(widget)
+        layout.setColumnStretch(0, 0)
+        layout.setColumnStretch(1, 1)
 
-        # Hue Controls
-        self.h_min_slider = self._create_slider("Hue Step Min (°)", 0, 180, 0, layout)
-        self.h_slider = self._create_slider("Hue Step Max (°)", 0, 180, 60, layout)
-        self.link_min_max_sliders(self.h_min_slider, self.h_slider)
+        factors = [("Hue", 0, 180, "h"), ("Saturation", 0, 100, "s"), ("Value", 0, 100, "v")]
 
-        self.h_tol_slider = self._create_slider("Hue Step Variance Max (°)", 0, 100, 30, layout)
+        for row, (factor_name, min_val, max_val, attr_prefix) in enumerate(factors):
+            factor_label = VerticalLabel(factor_name)
+            factor_label.setAlignment(Qt.AlignmentFlag.AlignTop)
+            factor_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+            factor_label.setFixedWidth(15)
+            layout.addWidget(factor_label, row, 0)
 
-        # Saturation Controls
-        self.s_min_slider = self._create_slider("Sat Step Min", 0, 100, 0, layout)
-        self.s_slider = self._create_slider("Sat Step Max", 0, 100, 50, layout)
-        self.link_min_max_sliders(self.s_min_slider, self.s_slider)
+            group_box = QGroupBox()
+            group_layout = QVBoxLayout(group_box)
 
-        self.s_tol_slider = self._create_slider("Sat Step Variance Max", 0, 100, 20, layout)
+            self._add_min_max_sliders(
+                min_val, max_val, 0, max_val // 2,
+                f"{attr_prefix}_min_slider",
+                f"{attr_prefix}_slider",
+                group_layout
+            )
 
-        # Value Controls
-        self.v_min_slider = self._create_slider("Val Step Min", 0, 100, 0, layout)
-        self.v_slider = self._create_slider("Val Step Max", 0, 100, 50, layout)
-        self.link_min_max_sliders(self.v_min_slider, self.v_slider)
+            setattr(self, f"{attr_prefix}_tol_slider", self._create_slider("Step Variance Max", 0, 100, 20, group_layout))
+            layout.addWidget(group_box, row, 1)
 
-        self.v_tol_slider = self._create_slider("Val Step Variance Max", 0, 100, 20, layout)
-
-        # Monotonicity Checkbox
-        self.monotonicity_checkbox = QCheckBox("Monotonic Directions")
-        layout.addWidget(self.monotonicity_checkbox)
+        self.monotonicity_checkbox = QCheckBox("Enforce Monotonicity")
+        layout.addWidget(self.monotonicity_checkbox, len(factors), 0, 1, 2)
 
         return widget
 
-    def link_min_max_sliders(self, min_slider, max_slider):
+    def _add_min_max_sliders(self, min_val, max_val, min_default, max_default, min_attr_name, max_attr_name, parent_layout):
+        # Create Labels
+        min_label = QLabel(f"Min: {min_default}")
+        max_label = QLabel(f"Max: {max_default}")
+
+        # Create Sliders
+        min_slider = QSlider(Qt.Orientation.Horizontal)
+        min_slider.setRange(min_val, max_val)
+        min_slider.setValue(min_default)
+        min_slider.setMaximum(max_default)
+
+        max_slider = QSlider(Qt.Orientation.Horizontal)
+        max_slider.setRange(min_val, max_val)
+        max_slider.setValue(max_default)
+        max_slider.setMinimum(min_default)
+
+        # Update Labels Dynamically
+        min_slider.valueChanged.connect(lambda val, l=min_label: l.setText(f"Min: {val}"))
+        max_slider.valueChanged.connect(lambda val, l=max_label: l.setText(f"Max: {val}"))
+
+        # Enforce min ≤ max constraint
+        self.link_min_max_sliders(min_slider, max_slider)
+
+        # Layout for Labels
+        label_row = QHBoxLayout()
+        label_row.addWidget(min_label)
+        label_row.addWidget(max_label)
+
+        # Layout for Sliders
+        slider_row = QHBoxLayout()
+        slider_row.addWidget(min_slider)
+        slider_row.addWidget(max_slider)
+
+        # Add to Parent Layout
+        parent_layout.addLayout(label_row)
+        parent_layout.addLayout(slider_row)
+
+        # Store sliders as instance attributes
+        setattr(self, min_attr_name, min_slider)
+        setattr(self, max_attr_name, max_slider)
+
+    @staticmethod
+    def link_min_max_sliders(min_slider, max_slider):
         min_slider.valueChanged.connect(lambda val: max_slider.setMinimum(val))
         max_slider.valueChanged.connect(lambda val: min_slider.setMaximum(val))
 
@@ -110,7 +168,8 @@ class RampExtractionViewer(QWidget):
         self.delta_e_var_slider = self._create_slider("ΔE2000 Variance Tolerance", 0, 30, 15, layout)
         return widget
 
-    def _create_slider(self, label_text, min_val, max_val, default, layout):
+    @staticmethod
+    def _create_slider(label_text, min_val, max_val, default, layout):
         label = QLabel(f"{label_text}: {default}")
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(min_val, max_val)

@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QLabel, QWidget
 from PyQt6.QtCore import Qt
 
-from flow_layout import FlowLayout
+from ui_helpers import FlowLayout
 from color_utils import get_highlight_color
 from color_selection_manager import ColorSelectionManager
 

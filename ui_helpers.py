@@ -1,4 +1,5 @@
-from PyQt6.QtWidgets import QLayout, QSizePolicy, QWidgetItem
+from PyQt6.QtGui import QPainter
+from PyQt6.QtWidgets import QLayout, QSizePolicy, QWidgetItem, QLabel
 from PyQt6.QtCore import QSize, Qt, QRect, QPoint
 
 
@@ -70,3 +71,22 @@ class FlowLayout(QLayout):
             line_height = max(line_height, item_size.height())
 
         return y + line_height - rect.y()
+
+class VerticalLabel(QLabel):
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.translate(0, self.height())
+        painter.rotate(-90)
+        painter.drawText(0, 0, self.height(), self.width(), Qt.AlignmentFlag.AlignCenter, self.text())
+        painter.end()
+
+    def sizeHint(self):
+        fm = self.fontMetrics()
+        text_width = fm.horizontalAdvance(self.text())
+        text_height = fm.height()
+        return QSize(text_height, text_width)  # Swapped due to rotation
