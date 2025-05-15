@@ -54,35 +54,33 @@ def get_text_descriptions(color):
         "hex_raw": hex_str
     }
 
-def colors_similar(c1, c2, threshold, method="HSV"):
-    if method == "HSV":
-        hsv1 = np.array(color_to_hsv(c1))
-        hsv2 = np.array(color_to_hsv(c2))
+def is_similar_hsv(c1, c2, hue_threshold=180, sat_threshold=1.0, val_threshold=1.0):
+    hsv1 = np.array(color_to_hsv(c1))
+    hsv2 = np.array(color_to_hsv(c2))
 
-        diffs = hsv1 - hsv2
+    diffs = hsv1 - hsv2
+    diffs[0] = (diffs[0] + 0.5) % 1.0 - 0.5  # Correct hue circular difference
 
-        # Correct hue circular difference
-        diffs[0] = (diffs[0] + 0.5) % 1.0 - 0.5  # This keeps hue difference in [-0.5, 0.5]
+    hue_diff = abs(diffs[0]) * 360  # Convert to degrees
+    sat_diff = abs(diffs[1])
+    val_diff = abs(diffs[2])
 
-        diff = np.linalg.norm(diffs)
-
-        return diff < threshold / 100.0
-
-    elif method == "CIEDE2000":
-        srgb1 = sRGBColor(*[x / 255.0 for x in c1[:3]])
-        srgb2 = sRGBColor(*[x / 255.0 for x in c2[:3]])
-        lab1 = convert_color(srgb1, LabColor)
-        lab2 = convert_color(srgb2, LabColor)
-
-        result = ciede2000(
-            (lab1.lab_l, lab1.lab_a, lab1.lab_b),
-            (lab2.lab_l, lab2.lab_a, lab2.lab_b)
-        )
-
-        delta_e = result['delta_E_00']
-        return delta_e < threshold
-
-    return False
+    return (hue_diff <= hue_threshold and
+            sat_diff <= sat_threshold and
+            val_diff <= val_threshold)
 
 
+def is_similar_ciede2000(c1, c2, threshold=100):
+    srgb1 = sRGBColor(*[x / 255.0 for x in c1[:3]])
+    srgb2 = sRGBColor(*[x / 255.0 for x in c2[:3]])
+    lab1 = convert_color(srgb1, LabColor)
+    lab2 = convert_color(srgb2, LabColor)
+
+    result = ciede2000(
+        (lab1.lab_l, lab1.lab_a, lab1.lab_b),
+        (lab2.lab_l, lab2.lab_a, lab2.lab_b)
+    )
+
+    delta_e = result['delta_E_00']
+    return delta_e < threshold
 

@@ -8,7 +8,7 @@ from PyQt6.QtCore import Qt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib import pyplot as plt
 
-from color_utils import extract_adjacent_color_pairs, colors_similar
+from color_utils import extract_adjacent_color_pairs, is_similar_hsv, is_similar_ciede2000
 
 
 class GraphViewer(QWidget):
@@ -20,7 +20,7 @@ class GraphViewer(QWidget):
         self.use_8_neighbors = False
         self._cached_adjacency_pairs = None
         self._cached_color_counts = None
-        self._cached_similarity_pairs = {}  # e.g., {'HSV': [...], 'CIEDE2000': [...]}
+        self._cached_similarity_pairs = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -43,8 +43,9 @@ class GraphViewer(QWidget):
         self.graph_canvas_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.graph_canvas_holder)
 
-        # Threshold controls
-        threshold_row = QHBoxLayout()
+        # Threshold slider
+        self.general_threshold_container = QWidget()
+        threshold_row = QHBoxLayout(self.general_threshold_container)
         self.threshold_slider = QSlider(Qt.Orientation.Horizontal)
         self.threshold_slider.setRange(1, 100)
         self.threshold_slider.setValue(20)
@@ -52,7 +53,10 @@ class GraphViewer(QWidget):
         self.threshold_value_label = QLabel("Threshold: 50")
         threshold_row.addWidget(self.threshold_value_label)
         threshold_row.addWidget(self.threshold_slider)
-        layout.addLayout(threshold_row)
+        layout.addWidget(self.general_threshold_container)
+
+        # HSV threshold sliders
+        self._setup_hsv_sliders(layout)
 
         # Threshold method + generate button
         method_row = QHBoxLayout()
@@ -67,9 +71,55 @@ class GraphViewer(QWidget):
 
         self.update_threshold_controls()
 
+    def _setup_hsv_sliders(self, layout):
+        # HSV Per-Aspect Sliders
+        self.hsv_sliders_container = QWidget()
+        hsv_layout = QVBoxLayout(self.hsv_sliders_container)
+
+        # Hue Slider
+        hue_row = QHBoxLayout()
+        self.hue_slider = QSlider(Qt.Orientation.Horizontal)
+        self.hue_slider.setRange(0, 180)
+        self.hue_slider.setValue(30)
+        self.hue_label = QLabel("Hue Diff:  ≤ 30°")
+        self.hue_label.setFixedWidth(115)
+        self.hue_slider.valueChanged.connect(lambda val: self.hue_label.setText(f"Hue Diff:  ≤ {val}°"))
+        hue_row.addWidget(self.hue_label)
+        hue_row.addWidget(self.hue_slider)
+        hsv_layout.addLayout(hue_row)
+
+        # Saturation Slider
+        sat_row = QHBoxLayout()
+        self.sat_slider = QSlider(Qt.Orientation.Horizontal)
+        self.sat_slider.setRange(0, 100)
+        self.sat_slider.setValue(30)
+        self.sat_label = QLabel("Sat Diff:   ≤ 30%")
+        self.sat_label.setFixedWidth(115)
+        self.sat_slider.valueChanged.connect(lambda val: self.sat_label.setText(f"Sat Diff:   ≤ {val}%"))
+        sat_row.addWidget(self.sat_label)
+        sat_row.addWidget(self.sat_slider)
+        hsv_layout.addLayout(sat_row)
+
+        # Value Slider
+        val_row = QHBoxLayout()
+        self.val_slider = QSlider(Qt.Orientation.Horizontal)
+        self.val_slider.setRange(0, 100)
+        self.val_slider.setValue(30)
+        self.val_label = QLabel("Val Diff:   ≤ 30%")
+        self.val_label.setFixedWidth(115)
+        self.val_slider.valueChanged.connect(lambda val: self.val_label.setText(f"Val Diff:   ≤ {val}%"))
+        val_row.addWidget(self.val_label)
+        val_row.addWidget(self.val_slider)
+        hsv_layout.addLayout(val_row)
+
+        layout.addWidget(self.hsv_sliders_container)
+        self.hsv_sliders_container.hide()
+
     def update_threshold_controls(self):
         graph_type = self.graph_type_selector.currentText()
         self.threshold_selector.clear()
+        self.hsv_sliders_container.hide()
+        self.general_threshold_container.show()
         if graph_type == "Spatial Adjacency Graph":
             self.threshold_selector.addItems(["Relative to color frequency", "Percentile-based", "Absolute"])
             self.threshold_selector.setCurrentText("Relative to color frequency")
@@ -83,6 +133,8 @@ class GraphViewer(QWidget):
     def update_threshold_slider(self):
         graph_type = self.graph_type_selector.currentText()
         method = self.threshold_selector.currentText()
+        self.hsv_sliders_container.hide()
+        self.general_threshold_container.show()
 
         if graph_type == "Spatial Adjacency Graph":
             if method == "Percentile-based":
@@ -99,8 +151,8 @@ class GraphViewer(QWidget):
 
         elif graph_type == "Color Similarity Graph":
             if method == "HSV":
-                self.threshold_slider.setRange(1, 100)
-                self.threshold_slider.setValue(30)
+                self.hsv_sliders_container.show()
+                self.general_threshold_container.hide()
             elif method == "CIEDE2000":
                 self.threshold_slider.setRange(1, 100)
                 self.threshold_slider.setValue(30)
@@ -124,9 +176,7 @@ class GraphViewer(QWidget):
                 self.threshold_value_label.setText(f"Occurrences: ≥ {value}")
 
         elif graph_type == "Color Similarity Graph":
-            if method == "HSV":
-                self.threshold_value_label.setText(f"Similarity: ≤ {value / 100:.2f}")
-            elif method == "CIEDE2000":
+            if method == "CIEDE2000":
                 self.threshold_value_label.setText(f"Similarity (ΔE): ≤ {value}")
 
         else:
@@ -194,13 +244,24 @@ class GraphViewer(QWidget):
 
     def generate_similarity_graph(self):
         method = self.threshold_selector.currentText()
-        self.calculate_similarity_pairs(method)
+        self.calculate_similarity_pairs()
 
-        slider_value = self.threshold_slider.value()
-        valid_pairs = [
-            (c1, c2) for c1, c2 in self._cached_similarity_pairs[method]
-            if colors_similar(c1, c2, slider_value, method=method)
-        ]
+        if method == "HSV":
+            hue_thresh = self.hue_slider.value()
+            sat_thresh = self.sat_slider.value() / 100.0
+            val_thresh = self.val_slider.value() / 100.0
+            valid_pairs = [
+                (c1, c2) for c1, c2 in self._cached_similarity_pairs
+                if is_similar_hsv(c1, c2, hue_thresh, sat_thresh, val_thresh)
+            ]
+        elif method == "CIEDE2000":
+            slider_value = self.threshold_slider.value()
+            valid_pairs = [
+                (c1, c2) for c1, c2 in self._cached_similarity_pairs
+                if is_similar_ciede2000(c1, c2, slider_value)
+            ]
+        else:
+            raise ValueError(f"Unknown filtering method: {method}")
 
         graph = nx.Graph()
         for c1, c2 in valid_pairs:
@@ -217,16 +278,15 @@ class GraphViewer(QWidget):
                 use_8_neighbors=self.use_8_neighbors
             )
 
-    def calculate_similarity_pairs(self, method):
-        if method not in self._cached_similarity_pairs:
+    def calculate_similarity_pairs(self):
+        if self._cached_similarity_pairs is None:
             pairs = []
             for c1 in self.unique_colors:
                 for c2 in self.unique_colors:
                     if c1 == c2:
                         continue
-                    if colors_similar(c1, c2, 100, method=method):  # Pre-compute with max threshold
-                        pairs.append((c1, c2))
-            self._cached_similarity_pairs[method] = pairs
+                    pairs.append((c1, c2))
+            self._cached_similarity_pairs = pairs
 
     @staticmethod
     def _map_spatial_threshold(method_name, slider_value):
