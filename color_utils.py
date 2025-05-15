@@ -84,3 +84,12 @@ def is_similar_ciede2000(c1, c2, threshold=100):
     delta_e = result['delta_E_00']
     return delta_e < threshold
 
+def hsv_diffs(path):
+    hsv_values = np.array([color_to_hsv(c) for c in path])
+    diffs = np.diff(hsv_values, axis=0)
+    # Hue circular correction
+    hue_diffs = diffs[:, 0]
+    hue_diffs = (hue_diffs + 0.5) % 1.0 - 0.5
+    diffs[:, 0] = hue_diffs
+    return diffs
+
