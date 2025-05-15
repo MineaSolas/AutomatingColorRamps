@@ -43,3 +43,7 @@ class RampWindow(QWidget):
         layout.setRowStretch(1, 1)
         layout.setColumnStretch(0, 1)
         layout.setColumnStretch(1, 1)
+
+    def closeEvent(self, event):
+        self.mini_viewer.cleanup()
+        super().closeEvent(event)

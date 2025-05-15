@@ -21,6 +21,7 @@ class RampExtractionViewer(QWidget):
     def _setup_ui(self):
         main_layout = QHBoxLayout(self)
         main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
         # --- Left: Controls Panel ---
         controls_panel = QWidget()
@@ -40,12 +41,7 @@ class RampExtractionViewer(QWidget):
         self.ciede_controls.hide()
 
         controls_layout.addStretch()
-        controls_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Extract Button
-        self.extract_button = QPushButton("Extract Ramps")
-        self.extract_button.clicked.connect(self.extract_color_ramps)
-        controls_layout.addWidget(self.extract_button)
+        controls_layout.setContentsMargins(0, 5, 0, 5)
 
         main_layout.addWidget(controls_panel, stretch=0)
 
@@ -72,6 +68,11 @@ class RampExtractionViewer(QWidget):
         self.ramps_layout.setSpacing(5)
         self.ramps_scroll_area.setWidget(self.ramp_container)
         left_panel_layout.addWidget(self.ramps_scroll_area, stretch=1)
+
+        # Extract Button
+        self.extract_button = QPushButton("Extract Ramps")
+        self.extract_button.clicked.connect(self.extract_color_ramps)
+        left_panel_layout.addWidget(self.extract_button)
 
         main_layout.addWidget(left_panel, stretch=1)
 
@@ -103,7 +104,7 @@ class RampExtractionViewer(QWidget):
             setattr(self, f"{attr_prefix}_tol_slider", self._create_slider("Step Variance Max", 0, 100, 20, group_layout))
             layout.addWidget(group_box, row, 1)
 
-        self.monotonicity_checkbox = QCheckBox("Enforce Monotonicity")
+        self.monotonicity_checkbox = QCheckBox("Monotonous")
         layout.addWidget(self.monotonicity_checkbox, len(factors), 0, 1, 2)
 
         return widget

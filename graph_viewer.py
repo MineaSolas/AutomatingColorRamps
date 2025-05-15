@@ -2,7 +2,7 @@ import networkx as nx
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSlider, QPushButton,
-    QLabel, QSizePolicy, QCheckBox, QGridLayout
+    QLabel, QSizePolicy, QCheckBox, QGridLayout, QGroupBox
 )
 from PyQt6.QtCore import Qt, QTimer
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -49,9 +49,17 @@ class GraphViewer(QWidget):
         layout.addLayout(graph_type_row)
 
         # Graph Canvas Area
+        self.graph_canvas_holder_box = QGroupBox()
+        self.graph_canvas_holder_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        box_layout = QVBoxLayout(self.graph_canvas_holder_box)
+        box_layout.setContentsMargins(0, 0, 0, 0)
+        box_layout.setSpacing(0)
+
         self.graph_canvas_holder = QWidget()
         self.graph_canvas_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(self.graph_canvas_holder)
+        box_layout.addWidget(self.graph_canvas_holder)
+        layout.addWidget(self.graph_canvas_holder_box, stretch=1)
 
         # Realtime Graph Update Timer
         self.update_timer = QTimer()
