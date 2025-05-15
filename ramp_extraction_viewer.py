@@ -1,7 +1,7 @@
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider, QPushButton,
-    QScrollArea, QSizePolicy
+    QScrollArea, QSizePolicy, QCheckBox
 )
 from PyQt6.QtCore import Qt
 from colormath.color_conversions import convert_color
@@ -64,13 +64,37 @@ class RampExtractionViewer(QWidget):
     def _create_basic_controls(self):
         widget = QWidget()
         layout = QVBoxLayout(widget)
+
+        # Hue Controls
+        self.h_min_slider = self._create_slider("Hue Step Min (°)", 0, 180, 0, layout)
         self.h_slider = self._create_slider("Hue Step Max (°)", 0, 180, 60, layout)
+        self.link_min_max_sliders(self.h_min_slider, self.h_slider)
+
         self.h_tol_slider = self._create_slider("Hue Step Variance Max (°)", 0, 100, 30, layout)
+
+        # Saturation Controls
+        self.s_min_slider = self._create_slider("Sat Step Min", 0, 100, 0, layout)
         self.s_slider = self._create_slider("Sat Step Max", 0, 100, 50, layout)
+        self.link_min_max_sliders(self.s_min_slider, self.s_slider)
+
         self.s_tol_slider = self._create_slider("Sat Step Variance Max", 0, 100, 20, layout)
+
+        # Value Controls
+        self.v_min_slider = self._create_slider("Val Step Min", 0, 100, 0, layout)
         self.v_slider = self._create_slider("Val Step Max", 0, 100, 50, layout)
+        self.link_min_max_sliders(self.v_min_slider, self.v_slider)
+
         self.v_tol_slider = self._create_slider("Val Step Variance Max", 0, 100, 20, layout)
+
+        # Monotonicity Checkbox
+        self.monotonicity_checkbox = QCheckBox("Monotonic Directions")
+        layout.addWidget(self.monotonicity_checkbox)
+
         return widget
+
+    def link_min_max_sliders(self, min_slider, max_slider):
+        min_slider.valueChanged.connect(lambda val: max_slider.setMinimum(val))
+        max_slider.valueChanged.connect(lambda val: min_slider.setMaximum(val))
 
     def _create_vector_controls(self):
         widget = QWidget()
@@ -120,12 +144,19 @@ class RampExtractionViewer(QWidget):
                     self.s_slider.value() / 100.0,
                     self.v_slider.value() / 100.0
                 ],
+                'min_step': [
+                    self.h_min_slider.value() / 180.0,
+                    self.s_min_slider.value() / 100.0,
+                    self.v_min_slider.value() / 100.0
+                ],
                 'tolerance': [
                     self.h_tol_slider.value() / 180.0,
                     self.s_tol_slider.value() / 100.0,
                     self.v_tol_slider.value() / 100.0
-                ]
+                ],
+                'monotonicity': self.monotonicity_checkbox.isChecked()
             }
+
         elif method == "Vector HSV":
             return {
                 'angle_tolerance_deg': self.vector_angle_slider.value(),
@@ -214,12 +245,25 @@ class RampExtractionViewer(QWidget):
 
         for i in range(3):  # H, S, V
             comp_diffs = diffs[:, i]
-            if not RampExtractionViewer.is_monotonic_direction(comp_diffs):
+            abs_diffs = np.abs(comp_diffs)
+
+            # Check max step
+            if not np.all(abs_diffs <= params.get('max_step', [1, 1, 1])[i] + 1e-5):
                 return False
-            if not RampExtractionViewer.is_within_step_limit(comp_diffs, params.get('max_step', [1, 1, 1])[i]):
+
+            # Check min step
+            if not np.all(abs_diffs >= params.get('min_step', [0, 0, 0])[i] - 1e-5):
                 return False
-            if not RampExtractionViewer.is_consistent_step_size(comp_diffs, params.get('tolerance', [0.1, 0.1, 0.1])[i]):
+
+            # Check step variance
+            if not RampExtractionViewer.is_consistent_step_size(
+                    comp_diffs, params.get('tolerance', [0.1, 0.1, 0.1])[i]):
                 return False
+
+            # Monotonicity Check (Optional)
+            if params.get('monotonicity', False):
+                if not RampExtractionViewer.is_monotonic_direction(comp_diffs):
+                    return False
 
         return True
 
@@ -239,7 +283,7 @@ class RampExtractionViewer(QWidget):
             dot = np.dot(v1, v2)
             norm_product = np.linalg.norm(v1) * np.linalg.norm(v2)
 
-            if norm_product < 1e-5:
+            if norm_product < 0.001:
                 continue  # Skip near-zero vectors
 
             angle = np.arccos(np.clip(dot / norm_product, -1.0, 1.0))
@@ -285,30 +329,22 @@ class RampExtractionViewer(QWidget):
     @staticmethod
     def is_monotonic_direction(deltas):
         # Ignore near-zero steps to prevent noise triggering false negatives
-        non_zero = deltas[np.abs(deltas) > 0.1]
+        non_zero = deltas[np.abs(deltas) > 0.05]
         if len(non_zero) == 0:
-            return True  # No real changes, allow flat ramp
-
-        # Check if all are positive or all are negative
+            return True
         return np.all(non_zero >= 0) or np.all(non_zero <= 0)
 
     @staticmethod
     def is_monotonic_delta_e(delta_e_steps, tolerance=1):
         diffs = np.diff(delta_e_steps)
         non_zero_diffs = diffs[np.abs(diffs) > tolerance]
-
         if len(non_zero_diffs) == 0:
             return True  # Flat ΔE changes, accept as monotonic
-
         return np.all(non_zero_diffs >= 0) or np.all(non_zero_diffs <= 0)
 
     @staticmethod
-    def is_within_step_limit(deltas, max_step):
-        return np.all(np.abs(deltas) <= max_step + 1e-5)
-
-    @staticmethod
     def is_consistent_step_size(deltas, tolerance):
-        non_zero = deltas[np.abs(deltas) > 1e-5]
+        non_zero = deltas[np.abs(deltas) > 0.001]
         if len(non_zero) < 2:
             return True
         step_diffs = np.diff(non_zero)

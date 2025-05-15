@@ -20,7 +20,7 @@ class MainWindow(QMainWindow):
         self.extract_button.clicked.connect(self.open_ramp_window)
         self.layout.addWidget(self.extract_button, stretch=0)
 
-        self.viewer.load_image(file_path="resources/tree-sample.png")
+        self.viewer.load_image(file_path="resources/shiver.png")
 
     def open_ramp_window(self):
         if not self.viewer.original_pixmap:
