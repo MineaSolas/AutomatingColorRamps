@@ -2,9 +2,9 @@ import networkx as nx
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSlider, QPushButton,
-    QLabel, QSizePolicy
+    QLabel, QSizePolicy, QCheckBox
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib import pyplot as plt
 
@@ -63,13 +63,31 @@ class GraphViewer(QWidget):
         self.threshold_selector = QComboBox()
         self.threshold_selector.addItems(["Relative to color frequency", "Percentile-based", "Absolute"])
         self.threshold_selector.currentTextChanged.connect(self.update_threshold_slider)
+        self.threshold_selector.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.graph_button = QPushButton("Generate Graph")
         self.graph_button.clicked.connect(self.generate_graph)
+        self.graph_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.realtime_checkbox = QCheckBox("Auto-update")
+        self.realtime_checkbox.setChecked(False)
         method_row.addWidget(self.threshold_selector)
         method_row.addWidget(self.graph_button)
+        method_row.addWidget(self.realtime_checkbox)
         layout.addLayout(method_row)
 
+        # Realtime updates when slider values change
+        self.update_timer = QTimer()
+        self.update_timer.setSingleShot(True)
+        self.update_timer.timeout.connect(self.generate_graph)
+        self.threshold_slider.valueChanged.connect(self.schedule_graph_update)
+        self.hue_slider.valueChanged.connect(self.schedule_graph_update)
+        self.sat_slider.valueChanged.connect(self.schedule_graph_update)
+        self.val_slider.valueChanged.connect(self.schedule_graph_update)
+
         self.update_threshold_controls()
+
+    def schedule_graph_update(self):
+        if self.realtime_checkbox.isChecked():
+                self.update_timer.start(100)  # Delay in milliseconds
 
     def _setup_hsv_sliders(self, layout):
         # HSV Per-Aspect Sliders
