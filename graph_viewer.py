@@ -79,24 +79,23 @@ class GraphViewer(QWidget):
         self.controls_grid.addWidget(self.spatial_method_selector, 2, col)
 
     def _setup_color_controls(self):
-        col = 1
         self.color_threshold_label = QLabel("Threshold:")
         self.color_threshold_slider = QSlider(Qt.Orientation.Horizontal)
         self.color_threshold_slider.setRange(1, 100)
         self.color_threshold_slider.setValue(30)
 
         self.color_method_selector = QComboBox()
-        self.color_method_selector.addItems(["HSV", "CIEDE2000"])
+        self.color_method_selector.addItems(["CIEDE2000", "HSV"])
 
         # HSV Sliders Container
         self.hsv_sliders_container = QWidget()
         hsv_layout = QVBoxLayout(self.hsv_sliders_container)
 
-        self.hue_slider = self._create_hsv_slider("H-diff:  ≤", 180, 30, hsv_layout)
-        self.sat_slider = self._create_hsv_slider("S-diff:  ≤", 100, 30, hsv_layout)
-        self.val_slider = self._create_hsv_slider("V-diff:  ≤", 100, 30, hsv_layout)
+        self.hue_slider = self._create_hsv_slider("H-diff:  ≤", 180, 30, hsv_layout, "°")
+        self.sat_slider = self._create_hsv_slider("S-diff:  ≤", 100, 30, hsv_layout, "%")
+        self.val_slider = self._create_hsv_slider("V-diff:  ≤", 100, 30, hsv_layout, "%")
 
-        self.show_color_controls()
+        self.update_color_controls()
 
     def _setup_combination_controls(self):
         col = 2
@@ -113,15 +112,15 @@ class GraphViewer(QWidget):
         self.controls_grid.addWidget(self.realtime_checkbox, 1, col)
         self.controls_grid.addWidget(self.generate_button, 2, col)
 
-    def _create_hsv_slider(self, label_text, max_value, default, parent_layout):
+    def _create_hsv_slider(self, label_text, max_value, default, parent_layout, unit="%"):
         row = QHBoxLayout()
-        label = QLabel(f"{label_text} {default}")
+        label = QLabel(f"{label_text} {default}{unit}")
         label.setFixedWidth(90)
 
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(0, max_value)
         slider.setValue(default)
-        slider.valueChanged.connect(lambda val, l=label, t=label_text: l.setText(f"{t} {val}"))
+        slider.valueChanged.connect(lambda val, l=label, t=label_text: l.setText(f"{t} {val}{unit}"))
         slider.valueChanged.connect(self.schedule_graph_update)
 
         row.addWidget(label)
@@ -158,7 +157,7 @@ class GraphViewer(QWidget):
         self.controls_grid.setColumnStretch(1, 1 if show_color else 0)
         self.controls_grid.setColumnStretch(2, 1 if show_combination else 0)
 
-        self.update_slider_values()
+        self.update_sliders()
 
     def update_threshold_labels(self):
         # Spatial Threshold
@@ -181,15 +180,18 @@ class GraphViewer(QWidget):
         # Spatial Controls
         self.spatial_threshold_slider.valueChanged.connect(self.update_threshold_labels)
         self.spatial_threshold_slider.valueChanged.connect(self.schedule_graph_update)
-        self.spatial_method_selector.currentTextChanged.connect(self.update_slider_values)
+        self.spatial_method_selector.currentTextChanged.connect(self.update_sliders)
         self.spatial_method_selector.currentTextChanged.connect(self.schedule_graph_update)
 
         # Color Controls
         self.color_threshold_slider.valueChanged.connect(self.update_threshold_labels)
         self.color_threshold_slider.valueChanged.connect(self.schedule_graph_update)
-        self.color_method_selector.currentTextChanged.connect(self.show_color_controls)
+        self.color_method_selector.currentTextChanged.connect(self.update_color_controls)
 
-    def update_slider_values(self):
+        # Combination Controls
+        self.combination_method_selector.currentTextChanged.connect(self.update_color_controls)
+
+    def update_sliders(self):
         graph_type = self.graph_type_selector.currentText()
 
         # Update Spatial Controls
@@ -213,19 +215,13 @@ class GraphViewer(QWidget):
             if method == "HSV":
                 self.color_threshold_slider.setRange(1, 100)
                 self.color_threshold_slider.setValue(30)
-                self.hsv_sliders_container.show()
-                self.color_threshold_label.hide()
-                self.color_threshold_slider.hide()
             elif method == "CIEDE2000":
                 self.color_threshold_slider.setRange(1, 100)
                 self.color_threshold_slider.setValue(30)
-                self.hsv_sliders_container.hide()
-                self.color_threshold_label.show()
-                self.color_threshold_slider.show()
 
         self.update_threshold_labels()
 
-    def show_color_controls(self):
+    def update_color_controls(self):
         col = 1
         method = self.color_method_selector.currentText()
 
@@ -245,7 +241,11 @@ class GraphViewer(QWidget):
             self.controls_grid.addWidget(self.color_threshold_slider, 1, col)
             self.controls_grid.addWidget(self.color_method_selector, 2, col)
 
-        self.update_slider_values()
+        self.color_threshold_label.setVisible(method != "HSV")
+        self.color_threshold_slider.setVisible(method != "HSV")
+        self.hsv_sliders_container.setVisible(method == "HSV")
+
+        self.update_sliders()
 
     def schedule_graph_update(self):
         if self.realtime_checkbox.isChecked():
@@ -286,8 +286,6 @@ class GraphViewer(QWidget):
 
         graph = nx.Graph()
         for (c1, c2), count in filtered_pairs.items():
-            graph.add_node(c1)
-            graph.add_node(c2)
             graph.add_edge(c1, c2)
 
         return graph
@@ -316,8 +314,6 @@ class GraphViewer(QWidget):
 
         graph = nx.Graph()
         for c1, c2 in valid_pairs:
-            graph.add_node(c1)
-            graph.add_node(c2)
             graph.add_edge(c1, c2)
 
         return graph
@@ -335,8 +331,6 @@ class GraphViewer(QWidget):
         else:
             raise ValueError(f"Unknown combination method: {method}")
 
-        combined_graph.add_nodes_from(spatial_graph.nodes)
-        combined_graph.add_nodes_from(color_graph.nodes)
         return combined_graph
 
     def calculate_adjacency_pairs(self):
@@ -380,6 +374,7 @@ class GraphViewer(QWidget):
     def display_graph(self, graph):
         fig, ax = plt.subplots(figsize=(6, 6))
         pos = nx.kamada_kawai_layout(graph)
+        pos = self.perturb_positions(pos)
 
         for node in graph.nodes:
             r, g, b, a = node
@@ -411,3 +406,15 @@ class GraphViewer(QWidget):
                     widget.setParent(None)
 
         holder_layout.addWidget(canvas)
+
+    @staticmethod
+    def perturb_positions(pos, epsilon=0.1, precision=4):
+        seen = {}
+        for node, (x, y) in pos.items():
+            key = (round(x, precision), round(y, precision))
+            if key in seen:
+                # Slightly offset the position to avoid overlap
+                pos[node] = (x + epsilon, y + epsilon)
+            else:
+                seen[key] = node
+        return pos
