@@ -2,7 +2,7 @@ import networkx as nx
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSlider, QPushButton,
-    QLabel, QSizePolicy, QCheckBox
+    QLabel, QSizePolicy, QCheckBox, QGridLayout
 )
 from PyQt6.QtCore import Qt, QTimer
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -16,211 +16,246 @@ class GraphViewer(QWidget):
         super().__init__(parent)
         self.image_array = image_array
         self.unique_colors = list(unique_colors)
+
         self.color_graph = None
         self.use_8_neighbors = False
+
         self._cached_adjacency_pairs = None
         self._cached_color_counts = None
         self._cached_similarity_pairs = None
+
         self._setup_ui()
+        self.connect_threshold_updates()
+        self.update_ui_visibility()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
 
-        # Graph type selection
-        top_row = QHBoxLayout()
-        label = QLabel("Color Space Model:")
-        label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
+        # Graph Type Selection
+        graph_type_row = QHBoxLayout()
+        graph_type_label = QLabel("Graph Type:")
+        graph_type_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
         self.graph_type_selector = QComboBox()
-        self.graph_type_selector.addItems(["Spatial Adjacency Graph", "Color Similarity Graph"])
-        self.graph_type_selector.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.graph_type_selector.currentTextChanged.connect(self.update_threshold_controls)
-        top_row.addWidget(label)
-        top_row.addWidget(self.graph_type_selector)
-        layout.addLayout(top_row)
+        self.graph_type_selector.addItems([
+            "Spatial Adjacency Graph",
+            "Color Similarity Graph",
+            "Hybrid Graph (Spatial + Color)"
+        ])
+        self.graph_type_selector.currentTextChanged.connect(self.update_ui_visibility)
+        graph_type_row.addWidget(graph_type_label)
+        graph_type_row.addWidget(self.graph_type_selector)
+        layout.addLayout(graph_type_row)
 
-        # Graph canvas area
+        # Graph Canvas Area
         self.graph_canvas_holder = QWidget()
         self.graph_canvas_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.graph_canvas_holder)
 
-        # Threshold slider
-        self.general_threshold_container = QWidget()
-        threshold_row = QHBoxLayout(self.general_threshold_container)
-        self.threshold_slider = QSlider(Qt.Orientation.Horizontal)
-        self.threshold_slider.setRange(1, 100)
-        self.threshold_slider.setValue(20)
-        self.threshold_slider.valueChanged.connect(self.update_threshold_label)
-        self.threshold_value_label = QLabel("Threshold: 50")
-        threshold_row.addWidget(self.threshold_value_label)
-        threshold_row.addWidget(self.threshold_slider)
-        layout.addWidget(self.general_threshold_container)
+        # Controls Grid (3 Columns)
+        self.controls_grid = QGridLayout()
+        self._setup_spatial_controls()
+        self._setup_color_controls()
+        self._setup_combination_controls()
+        layout.addLayout(self.controls_grid)
 
-        # HSV threshold sliders
-        self._setup_hsv_sliders(layout)
-
-        # Threshold method + generate button
-        method_row = QHBoxLayout()
-        self.threshold_selector = QComboBox()
-        self.threshold_selector.addItems(["Relative to color frequency", "Percentile-based", "Absolute"])
-        self.threshold_selector.currentTextChanged.connect(self.update_threshold_slider)
-        self.threshold_selector.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.graph_button = QPushButton("Generate Graph")
-        self.graph_button.clicked.connect(self.generate_graph)
-        self.graph_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.realtime_checkbox = QCheckBox("Auto-update")
-        self.realtime_checkbox.setChecked(False)
-        method_row.addWidget(self.threshold_selector)
-        method_row.addWidget(self.graph_button)
-        method_row.addWidget(self.realtime_checkbox)
-        layout.addLayout(method_row)
-
-        # Realtime updates when slider values change
+        # Realtime Graph Update Timer
         self.update_timer = QTimer()
         self.update_timer.setSingleShot(True)
         self.update_timer.timeout.connect(self.generate_graph)
-        self.threshold_slider.valueChanged.connect(self.schedule_graph_update)
-        self.hue_slider.valueChanged.connect(self.schedule_graph_update)
-        self.sat_slider.valueChanged.connect(self.schedule_graph_update)
-        self.val_slider.valueChanged.connect(self.schedule_graph_update)
 
-        self.update_threshold_controls()
+    def _setup_spatial_controls(self):
+        col = 0
+        self.spatial_threshold_label = QLabel("Threshold:")
+        self.spatial_threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self.spatial_threshold_slider.setRange(1, 100)
+        self.spatial_threshold_slider.setValue(50)
+
+        self.spatial_method_selector = QComboBox()
+        self.spatial_method_selector.addItems(["Relative to color frequency", "Percentile-based", "Absolute"])
+
+        self.controls_grid.addWidget(self.spatial_threshold_label, 0, col)
+        self.controls_grid.addWidget(self.spatial_threshold_slider, 1, col)
+        self.controls_grid.addWidget(self.spatial_method_selector, 2, col)
+
+    def _setup_color_controls(self):
+        col = 1
+        self.color_threshold_label = QLabel("Threshold:")
+        self.color_threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self.color_threshold_slider.setRange(1, 100)
+        self.color_threshold_slider.setValue(30)
+
+        self.color_method_selector = QComboBox()
+        self.color_method_selector.addItems(["HSV", "CIEDE2000"])
+
+        # HSV Sliders Container
+        self.hsv_sliders_container = QWidget()
+        hsv_layout = QVBoxLayout(self.hsv_sliders_container)
+
+        self.hue_slider = self._create_hsv_slider("H-diff:  ≤", 180, 30, hsv_layout)
+        self.sat_slider = self._create_hsv_slider("S-diff:  ≤", 100, 30, hsv_layout)
+        self.val_slider = self._create_hsv_slider("V-diff:  ≤", 100, 30, hsv_layout)
+
+        self.controls_grid.addWidget(self.color_threshold_label, 0, col)
+        self.controls_grid.addWidget(self.color_threshold_slider, 1, col)
+        self.controls_grid.addWidget(self.hsv_sliders_container, 2, col)
+        self.controls_grid.addWidget(self.color_method_selector, 3, col)
+
+    def _setup_combination_controls(self):
+        col = 2
+        self.combination_method_selector = QComboBox()
+        self.combination_method_selector.addItems(["Union", "Intersection"])
+
+        self.realtime_checkbox = QCheckBox("Auto-Update")
+        self.realtime_checkbox.setChecked(False)
+
+        self.generate_button = QPushButton("Generate Graph")
+        self.generate_button.clicked.connect(self.generate_graph)
+
+        self.controls_grid.addWidget(self.combination_method_selector, 0, col)
+        self.controls_grid.addWidget(self.realtime_checkbox, 1, col)
+        self.controls_grid.addWidget(self.generate_button, 2, col)
+
+    def _create_hsv_slider(self, label_text, max_value, default, parent_layout):
+        row = QHBoxLayout()
+        label = QLabel(f"{label_text} {default}")
+        label.setFixedWidth(90)
+
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(0, max_value)
+        slider.setValue(default)
+        slider.valueChanged.connect(lambda val, l=label, t=label_text: l.setText(f"{t} {val}"))
+        slider.valueChanged.connect(self.schedule_graph_update)
+
+        row.addWidget(label)
+        row.addWidget(slider)
+        parent_layout.addLayout(row)
+
+        return slider
+
+    def update_ui_visibility(self):
+        graph_type = self.graph_type_selector.currentText()
+        is_hybrid = (graph_type == "Hybrid Graph (Spatial + Color)")
+
+        # Determine which columns to show
+        show_spatial = is_hybrid or graph_type == "Spatial Adjacency Graph"
+        show_color = is_hybrid or graph_type == "Color Similarity Graph"
+        show_combination = is_hybrid
+
+        # Show/Hide spatial controls
+        self.spatial_threshold_label.setVisible(show_spatial)
+        self.spatial_threshold_slider.setVisible(show_spatial)
+        self.spatial_method_selector.setVisible(show_spatial)
+
+        # Show/Hide color controls
+        self.color_threshold_label.setVisible(show_color and self.color_method_selector.currentText() != "HSV")
+        self.color_threshold_slider.setVisible(show_color and self.color_method_selector.currentText() != "HSV")
+        self.color_method_selector.setVisible(show_color)
+        self.hsv_sliders_container.setVisible(show_color and self.color_method_selector.currentText() == "HSV")
+
+        # Show/Hide combination controls
+        self.combination_method_selector.setVisible(show_combination)
+
+        # Adjust column stretches
+        self.controls_grid.setColumnStretch(0, 1 if show_spatial else 0)
+        self.controls_grid.setColumnStretch(1, 1 if show_color else 0)
+        self.controls_grid.setColumnStretch(2, 1 if show_combination else 0)
+
+        self.update_slider_values()
+
+    def update_threshold_labels(self):
+        # Spatial Threshold
+        spatial_value = self.spatial_threshold_slider.value()
+        s_method = self.spatial_method_selector.currentText()
+        if s_method == "Percentile-based":
+            self.spatial_threshold_label.setText(f"Percentile: {spatial_value}%")
+        elif s_method == "Relative to color frequency":
+            self.spatial_threshold_label.setText(f"Relative: ≥ {spatial_value / 100:.2f}")
+        elif s_method == "Absolute":
+            self.spatial_threshold_label.setText(f"Occurrences: ≥ {spatial_value}")
+
+        # Color Threshold
+        color_value = self.color_threshold_slider.value()
+        c_method = self.color_method_selector.currentText()
+        if c_method == "CIEDE2000":
+            self.color_threshold_label.setText(f"ΔE Similarity: ≤ {color_value}")
+
+    def connect_threshold_updates(self):
+        # Spatial Controls
+        self.spatial_threshold_slider.valueChanged.connect(self.update_threshold_labels)
+        self.spatial_threshold_slider.valueChanged.connect(self.schedule_graph_update)
+        self.spatial_method_selector.currentTextChanged.connect(self.update_slider_values)
+        self.spatial_method_selector.currentTextChanged.connect(self.schedule_graph_update)
+
+        # Color Controls
+        self.color_threshold_slider.valueChanged.connect(self.update_threshold_labels)
+        self.color_threshold_slider.valueChanged.connect(self.schedule_graph_update)
+        self.color_method_selector.currentTextChanged.connect(self.update_slider_values)
+
+    def update_slider_values(self):
+        graph_type = self.graph_type_selector.currentText()
+
+        # Update Spatial Controls
+        if graph_type in ["Spatial Adjacency Graph", "Hybrid Graph (Spatial + Color)"]:
+            method = self.spatial_method_selector.currentText()
+            if method == "Percentile-based":
+                self.spatial_threshold_slider.setRange(1, 100)
+                self.spatial_threshold_slider.setValue(80)
+            elif method == "Relative to color frequency":
+                self.spatial_threshold_slider.setRange(1, 200)
+                self.spatial_threshold_slider.setValue(50)
+            elif method == "Absolute":
+                self.calculate_adjacency_pairs()
+                max_occurrence = max(self._cached_color_counts.values(), default=1)
+                self.spatial_threshold_slider.setRange(1, max_occurrence)
+                self.spatial_threshold_slider.setValue(min(20, max_occurrence))
+
+        # Update Color Controls
+        if graph_type in ["Color Similarity Graph", "Hybrid Graph (Spatial + Color)"]:
+            method = self.color_method_selector.currentText()
+            if method == "HSV":
+                self.color_threshold_slider.setRange(1, 100)
+                self.color_threshold_slider.setValue(30)
+                self.hsv_sliders_container.show()
+                self.color_threshold_label.hide()
+                self.color_threshold_slider.hide()
+            elif method == "CIEDE2000":
+                self.color_threshold_slider.setRange(1, 100)
+                self.color_threshold_slider.setValue(30)
+                self.hsv_sliders_container.hide()
+                self.color_threshold_label.show()
+                self.color_threshold_slider.show()
+
+        self.update_threshold_labels()
 
     def schedule_graph_update(self):
         if self.realtime_checkbox.isChecked():
                 self.update_timer.start(100)  # Delay in milliseconds
-
-    def _setup_hsv_sliders(self, layout):
-        # HSV Per-Aspect Sliders
-        self.hsv_sliders_container = QWidget()
-        hsv_layout = QVBoxLayout(self.hsv_sliders_container)
-
-        # Hue Slider
-        hue_row = QHBoxLayout()
-        self.hue_slider = QSlider(Qt.Orientation.Horizontal)
-        self.hue_slider.setRange(0, 180)
-        self.hue_slider.setValue(30)
-        self.hue_label = QLabel("Hue Diff:  ≤ 30°")
-        self.hue_label.setFixedWidth(115)
-        self.hue_slider.valueChanged.connect(lambda val: self.hue_label.setText(f"Hue Diff:  ≤ {val}°"))
-        hue_row.addWidget(self.hue_label)
-        hue_row.addWidget(self.hue_slider)
-        hsv_layout.addLayout(hue_row)
-
-        # Saturation Slider
-        sat_row = QHBoxLayout()
-        self.sat_slider = QSlider(Qt.Orientation.Horizontal)
-        self.sat_slider.setRange(0, 100)
-        self.sat_slider.setValue(30)
-        self.sat_label = QLabel("Sat Diff:   ≤ 30%")
-        self.sat_label.setFixedWidth(115)
-        self.sat_slider.valueChanged.connect(lambda val: self.sat_label.setText(f"Sat Diff:   ≤ {val}%"))
-        sat_row.addWidget(self.sat_label)
-        sat_row.addWidget(self.sat_slider)
-        hsv_layout.addLayout(sat_row)
-
-        # Value Slider
-        val_row = QHBoxLayout()
-        self.val_slider = QSlider(Qt.Orientation.Horizontal)
-        self.val_slider.setRange(0, 100)
-        self.val_slider.setValue(30)
-        self.val_label = QLabel("Val Diff:   ≤ 30%")
-        self.val_label.setFixedWidth(115)
-        self.val_slider.valueChanged.connect(lambda val: self.val_label.setText(f"Val Diff:   ≤ {val}%"))
-        val_row.addWidget(self.val_label)
-        val_row.addWidget(self.val_slider)
-        hsv_layout.addLayout(val_row)
-
-        layout.addWidget(self.hsv_sliders_container)
-        self.hsv_sliders_container.hide()
-
-    def update_threshold_controls(self):
-        graph_type = self.graph_type_selector.currentText()
-        self.threshold_selector.clear()
-        self.hsv_sliders_container.hide()
-        self.general_threshold_container.show()
-        if graph_type == "Spatial Adjacency Graph":
-            self.threshold_selector.addItems(["Relative to color frequency", "Percentile-based", "Absolute"])
-            self.threshold_selector.setCurrentText("Relative to color frequency")
-        elif graph_type == "Color Similarity Graph":
-            self.threshold_selector.addItems(["HSV", "CIEDE2000"])
-            self.threshold_selector.setCurrentText("CIEDE2000")
-        else:
-            raise ValueError(f"Unknown color space model: {graph_type}")
-        self.update_threshold_slider()
-
-    def update_threshold_slider(self):
-        graph_type = self.graph_type_selector.currentText()
-        method = self.threshold_selector.currentText()
-        self.hsv_sliders_container.hide()
-        self.general_threshold_container.show()
-
-        if graph_type == "Spatial Adjacency Graph":
-            if method == "Percentile-based":
-                self.threshold_slider.setRange(1, 100)
-                self.threshold_slider.setValue(80)
-            elif method == "Relative to color frequency":
-                self.threshold_slider.setRange(1, 200)
-                self.threshold_slider.setValue(50)
-            elif method == "Absolute":
-                self.calculate_adjacency_pairs()
-                max_occurrence = max(self._cached_color_counts.values(), default=1)
-                self.threshold_slider.setRange(1, max_occurrence)
-                self.threshold_slider.setValue(min(20, max_occurrence))
-
-        elif graph_type == "Color Similarity Graph":
-            if method == "HSV":
-                self.hsv_sliders_container.show()
-                self.general_threshold_container.hide()
-            elif method == "CIEDE2000":
-                self.threshold_slider.setRange(1, 100)
-                self.threshold_slider.setValue(30)
-
-        else:
-            raise ValueError(f"Unknown color space model: {graph_type}")
-
-        self.update_threshold_label()
-
-    def update_threshold_label(self):
-        graph_type = self.graph_type_selector.currentText()
-        method = self.threshold_selector.currentText()
-        value = self.threshold_slider.value()
-
-        if graph_type == "Spatial Adjacency Graph":
-            if method == "Percentile-based":
-                self.threshold_value_label.setText(f"Percentile: {value}%")
-            elif method == "Relative to color frequency":
-                self.threshold_value_label.setText(f"Relative Adjacency: ≥ {value / 100:.2f}")
-            elif method == "Absolute":
-                self.threshold_value_label.setText(f"Occurrences: ≥ {value}")
-
-        elif graph_type == "Color Similarity Graph":
-            if method == "CIEDE2000":
-                self.threshold_value_label.setText(f"Similarity (ΔE): ≤ {value}")
-
-        else:
-            raise ValueError(f"Unknown color space model: {graph_type}")
 
     def generate_graph(self):
         if self.image_array is None or not self.unique_colors:
             return
 
         graph_type = self.graph_type_selector.currentText()
+
         if graph_type == "Spatial Adjacency Graph":
             graph = self.generate_spatial_graph()
         elif graph_type == "Color Similarity Graph":
-            graph = self.generate_similarity_graph()
+            graph = self.generate_color_graph()
+        elif graph_type == "Hybrid Graph (Spatial + Color)":
+            spatial_graph = self.generate_spatial_graph()
+            color_graph = self.generate_color_graph()
+            graph = self.combine_graphs(spatial_graph, color_graph)
         else:
-            raise ValueError(f"Unknown color space model: {graph_type}")
+            raise ValueError(f"Unknown graph type: {graph_type}")
 
         self.color_graph = graph
-        self._display_graph(graph)
+        self.display_graph(graph)
 
     def generate_spatial_graph(self):
         self.calculate_adjacency_pairs()
-        method, threshold = self._map_spatial_threshold(
-            self.threshold_selector.currentText(),
-            self.threshold_slider.value()
-        )
+
+        method = self.spatial_method_selector.currentText()
+        threshold = self.spatial_threshold_slider.value()
 
         filtered_pairs = self.filter_adjacency_pairs(
             self._cached_adjacency_pairs,
@@ -230,39 +265,18 @@ class GraphViewer(QWidget):
         )
 
         graph = nx.Graph()
-        for (color1, color2), count in filtered_pairs.items():
-            graph.add_node(color1)
-            graph.add_node(color2)
-            graph.add_edge(color1, color2)
+        for (c1, c2), count in filtered_pairs.items():
+            graph.add_node(c1)
+            graph.add_node(c2)
+            graph.add_edge(c1, c2)
 
         return graph
 
-    @staticmethod
-    def filter_adjacency_pairs(pair_counts, color_counts, method, threshold):
-        if not pair_counts:
-            return {}
-
-        if method == "absolute":
-            return {pair: count for pair, count in pair_counts.items() if count >= threshold}
-
-        elif method == "relative":
-            return {
-                pair: count for pair, count in pair_counts.items()
-                if (count / max(1, color_counts.get(pair[0], 1)) >= threshold * 4 or
-                    count / max(1, color_counts.get(pair[1], 1)) >= threshold * 4)
-            }
-
-        elif method == "percentile":
-            counts = np.array(list(pair_counts.values()))
-            threshold = np.percentile(counts, threshold)
-            return {pair: count for pair, count in pair_counts.items() if count >= threshold}
-
-        else:
-            raise ValueError(f"Unknown filtering method: {method}")
-
-    def generate_similarity_graph(self):
-        method = self.threshold_selector.currentText()
+    def generate_color_graph(self):
         self.calculate_similarity_pairs()
+
+        method = self.color_method_selector.currentText()
+        threshold = self.color_threshold_slider.value()
 
         if method == "HSV":
             hue_thresh = self.hue_slider.value()
@@ -273,13 +287,12 @@ class GraphViewer(QWidget):
                 if is_similar_hsv(c1, c2, hue_thresh, sat_thresh, val_thresh)
             ]
         elif method == "CIEDE2000":
-            slider_value = self.threshold_slider.value()
             valid_pairs = [
                 (c1, c2) for c1, c2 in self._cached_similarity_pairs
-                if is_similar_ciede2000(c1, c2, slider_value)
+                if is_similar_ciede2000(c1, c2, threshold)
             ]
         else:
-            raise ValueError(f"Unknown filtering method: {method}")
+            raise ValueError(f"Unknown color similarity method: {method}")
 
         graph = nx.Graph()
         for c1, c2 in valid_pairs:
@@ -288,6 +301,23 @@ class GraphViewer(QWidget):
             graph.add_edge(c1, c2)
 
         return graph
+
+    def combine_graphs(self, spatial_graph, color_graph):
+        method = self.combination_method_selector.currentText()
+        combined_graph = nx.Graph()
+
+        if method == "Union":
+            combined_graph.add_edges_from(spatial_graph.edges)
+            combined_graph.add_edges_from(color_graph.edges)
+        elif method == "Intersection":
+            common_edges = set(spatial_graph.edges).intersection(color_graph.edges)
+            combined_graph.add_edges_from(common_edges)
+        else:
+            raise ValueError(f"Unknown combination method: {method}")
+
+        combined_graph.add_nodes_from(spatial_graph.nodes)
+        combined_graph.add_nodes_from(color_graph.nodes)
+        return combined_graph
 
     def calculate_adjacency_pairs(self):
         if self._cached_adjacency_pairs is None or self._cached_color_counts is None:
@@ -301,23 +331,33 @@ class GraphViewer(QWidget):
             pairs = []
             for c1 in self.unique_colors:
                 for c2 in self.unique_colors:
-                    if c1 == c2:
-                        continue
-                    pairs.append((c1, c2))
+                    if c1 != c2:
+                        pairs.append((c1, c2))
             self._cached_similarity_pairs = pairs
 
     @staticmethod
-    def _map_spatial_threshold(method_name, slider_value):
-        if method_name == "Percentile-based":
-            return "percentile", slider_value
-        elif method_name == "Relative to color frequency":
-            return "relative", slider_value / 100.0
-        elif method_name == "Absolute":
-            return "absolute", slider_value
-        else:
-            raise ValueError(f"Unknown filtering method: {method_name}")
+    def filter_adjacency_pairs(pair_counts, color_counts, method, threshold):
+        if not pair_counts:
+            return {}
 
-    def _display_graph(self, graph):
+        if method == "Absolute":
+            return {pair: count for pair, count in pair_counts.items() if count >= threshold}
+
+        elif method == "Relative to color frequency":
+            return {
+                pair: count for pair, count in pair_counts.items()
+                if (count / max(1, color_counts.get(pair[0], 1)) >= threshold / 100.0 or
+                    count / max(1, color_counts.get(pair[1], 1)) >= threshold / 100.0)
+            }
+
+        elif method == "Percentile-based":
+            counts = np.array(list(pair_counts.values()))
+            t_val = np.percentile(counts, threshold)
+            return {pair: count for pair, count in pair_counts.items() if count >= t_val}
+
+        raise ValueError(f"Unknown spatial filtering method: {method}")
+
+    def display_graph(self, graph):
         fig, ax = plt.subplots(figsize=(6, 6))
         pos = nx.kamada_kawai_layout(graph)
 
