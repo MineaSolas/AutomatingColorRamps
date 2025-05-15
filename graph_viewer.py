@@ -42,6 +42,7 @@ class GraphViewer(QWidget):
             "Hybrid Graph (Spatial + Color)"
         ])
         self.graph_type_selector.currentTextChanged.connect(self.update_ui_visibility)
+        self.graph_type_selector.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         graph_type_row.addWidget(graph_type_label)
         graph_type_row.addWidget(self.graph_type_selector)
         layout.addLayout(graph_type_row)
@@ -95,10 +96,7 @@ class GraphViewer(QWidget):
         self.sat_slider = self._create_hsv_slider("S-diff:  ≤", 100, 30, hsv_layout)
         self.val_slider = self._create_hsv_slider("V-diff:  ≤", 100, 30, hsv_layout)
 
-        self.controls_grid.addWidget(self.color_threshold_label, 0, col)
-        self.controls_grid.addWidget(self.color_threshold_slider, 1, col)
-        self.controls_grid.addWidget(self.hsv_sliders_container, 2, col)
-        self.controls_grid.addWidget(self.color_method_selector, 3, col)
+        self.show_color_controls()
 
     def _setup_combination_controls(self):
         col = 2
@@ -169,7 +167,7 @@ class GraphViewer(QWidget):
         if s_method == "Percentile-based":
             self.spatial_threshold_label.setText(f"Percentile: {spatial_value}%")
         elif s_method == "Relative to color frequency":
-            self.spatial_threshold_label.setText(f"Relative: ≥ {spatial_value / 100:.2f}")
+            self.spatial_threshold_label.setText(f"Relative Adjacency: ≥ {spatial_value / 100:.2f}")
         elif s_method == "Absolute":
             self.spatial_threshold_label.setText(f"Occurrences: ≥ {spatial_value}")
 
@@ -189,7 +187,7 @@ class GraphViewer(QWidget):
         # Color Controls
         self.color_threshold_slider.valueChanged.connect(self.update_threshold_labels)
         self.color_threshold_slider.valueChanged.connect(self.schedule_graph_update)
-        self.color_method_selector.currentTextChanged.connect(self.update_slider_values)
+        self.color_method_selector.currentTextChanged.connect(self.show_color_controls)
 
     def update_slider_values(self):
         graph_type = self.graph_type_selector.currentText()
@@ -226,6 +224,28 @@ class GraphViewer(QWidget):
                 self.color_threshold_slider.show()
 
         self.update_threshold_labels()
+
+    def show_color_controls(self):
+        col = 1
+        method = self.color_method_selector.currentText()
+
+        self.controls_grid.removeWidget(self.color_threshold_label)
+        self.controls_grid.removeWidget(self.color_threshold_slider)
+        self.controls_grid.removeWidget(self.hsv_sliders_container)
+
+        self.color_threshold_label.setParent(None)
+        self.color_threshold_slider.setParent(None)
+        self.hsv_sliders_container.setParent(None)
+
+        if method == "HSV":
+            self.controls_grid.addWidget(self.hsv_sliders_container, 0, col, 2, 1)
+            self.controls_grid.addWidget(self.color_method_selector, 2, col)
+        elif method == "CIEDE2000":
+            self.controls_grid.addWidget(self.color_threshold_label, 0, col)
+            self.controls_grid.addWidget(self.color_threshold_slider, 1, col)
+            self.controls_grid.addWidget(self.color_method_selector, 2, col)
+
+        self.update_slider_values()
 
     def schedule_graph_update(self):
         if self.realtime_checkbox.isChecked():
