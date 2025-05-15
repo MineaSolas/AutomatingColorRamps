@@ -23,9 +23,11 @@ class GraphViewer(QWidget):
         self._cached_adjacency_pairs = None
         self._cached_color_counts = None
         self._cached_similarity_pairs = None
+        self.spatial_slider_values = {}
+        self.color_slider_values = {}
 
         self._setup_ui()
-        self.connect_threshold_updates()
+        self.connect_updates()
         self.update_ui_visibility()
 
     def _setup_ui(self):
@@ -41,7 +43,6 @@ class GraphViewer(QWidget):
             "Color Similarity Graph",
             "Hybrid Graph (Spatial + Color)"
         ])
-        self.graph_type_selector.currentTextChanged.connect(self.update_ui_visibility)
         self.graph_type_selector.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         graph_type_row.addWidget(graph_type_label)
         graph_type_row.addWidget(self.graph_type_selector)
@@ -52,17 +53,16 @@ class GraphViewer(QWidget):
         self.graph_canvas_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.graph_canvas_holder)
 
-        # Controls Grid (3 Columns)
-        self.controls_grid = QGridLayout()
-        self._setup_spatial_controls()
-        self._setup_color_controls()
-        self._setup_combination_controls()
-        layout.addLayout(self.controls_grid)
-
         # Realtime Graph Update Timer
         self.update_timer = QTimer()
         self.update_timer.setSingleShot(True)
-        self.update_timer.timeout.connect(self.generate_graph)
+
+        # Controls Grid (3 Columns)
+        self.controls_grid = QGridLayout()
+        self._setup_combination_controls()
+        self._setup_spatial_controls()
+        self._setup_color_controls()
+        layout.addLayout(self.controls_grid)
 
     def _setup_spatial_controls(self):
         col = 0
@@ -102,8 +102,8 @@ class GraphViewer(QWidget):
         self.combination_method_selector = QComboBox()
         self.combination_method_selector.addItems(["Union", "Intersection"])
 
-        self.realtime_checkbox = QCheckBox("Auto-Update")
-        self.realtime_checkbox.setChecked(False)
+        self.realtime_checkbox = QCheckBox("Auto-update")
+        self.realtime_checkbox.setChecked(True)
 
         self.generate_button = QPushButton("Generate Graph")
         self.generate_button.clicked.connect(self.generate_graph)
@@ -176,50 +176,65 @@ class GraphViewer(QWidget):
         if c_method == "CIEDE2000":
             self.color_threshold_label.setText(f"ΔE Similarity: ≤ {color_value}")
 
-    def connect_threshold_updates(self):
+    def connect_updates(self):
+        self.graph_type_selector.currentTextChanged.connect(self.update_ui_visibility)
+        self.graph_type_selector.currentTextChanged.connect(self.schedule_graph_update)
+        self.update_timer.timeout.connect(self.generate_graph)
+
         # Spatial Controls
         self.spatial_threshold_slider.valueChanged.connect(self.update_threshold_labels)
+        self.spatial_threshold_slider.valueChanged.connect(self.cache_spatial_slider_value)
         self.spatial_threshold_slider.valueChanged.connect(self.schedule_graph_update)
         self.spatial_method_selector.currentTextChanged.connect(self.update_sliders)
         self.spatial_method_selector.currentTextChanged.connect(self.schedule_graph_update)
 
         # Color Controls
         self.color_threshold_slider.valueChanged.connect(self.update_threshold_labels)
+        self.color_threshold_slider.valueChanged.connect(self.cache_color_slider_value)
         self.color_threshold_slider.valueChanged.connect(self.schedule_graph_update)
         self.color_method_selector.currentTextChanged.connect(self.update_color_controls)
+        self.color_method_selector.currentTextChanged.connect(self.schedule_graph_update)
 
         # Combination Controls
         self.combination_method_selector.currentTextChanged.connect(self.update_color_controls)
+        self.combination_method_selector.currentTextChanged.connect(self.schedule_graph_update)
 
     def update_sliders(self):
         graph_type = self.graph_type_selector.currentText()
 
-        # Update Spatial Controls
+        # Spatial Controls
         if graph_type in ["Spatial Adjacency Graph", "Hybrid Graph (Spatial + Color)"]:
             method = self.spatial_method_selector.currentText()
             if method == "Percentile-based":
-                self.spatial_threshold_slider.setRange(1, 100)
-                self.spatial_threshold_slider.setValue(80)
+                max_value = 100
             elif method == "Relative to color frequency":
-                self.spatial_threshold_slider.setRange(1, 200)
-                self.spatial_threshold_slider.setValue(50)
+                max_value = 200
             elif method == "Absolute":
                 self.calculate_adjacency_pairs()
-                max_occurrence = max(self._cached_color_counts.values(), default=1)
-                self.spatial_threshold_slider.setRange(1, max_occurrence)
-                self.spatial_threshold_slider.setValue(min(20, max_occurrence))
+                max_value = max(self._cached_color_counts.values(), default=1)
+            self.spatial_threshold_slider.setRange(1, max_value)
 
-        # Update Color Controls
+            # Restore last value or set default
+            last_value = self.spatial_slider_values.get(method, 50)
+            self.spatial_threshold_slider.setValue(last_value)
+
+        # Color Controls
         if graph_type in ["Color Similarity Graph", "Hybrid Graph (Spatial + Color)"]:
             method = self.color_method_selector.currentText()
-            if method == "HSV":
-                self.color_threshold_slider.setRange(1, 100)
-                self.color_threshold_slider.setValue(30)
-            elif method == "CIEDE2000":
-                self.color_threshold_slider.setRange(1, 100)
-                self.color_threshold_slider.setValue(30)
+            self.color_threshold_slider.setRange(1, 100)
+
+            last_value = self.color_slider_values.get(method, 30)
+            self.color_threshold_slider.setValue(last_value)
 
         self.update_threshold_labels()
+
+    def cache_spatial_slider_value(self, value):
+        method = self.spatial_method_selector.currentText()
+        self.spatial_slider_values[method] = value
+
+    def cache_color_slider_value(self, value):
+        method = self.color_method_selector.currentText()
+        self.color_slider_values[method] = value
 
     def update_color_controls(self):
         col = 1
@@ -248,7 +263,7 @@ class GraphViewer(QWidget):
         self.update_sliders()
 
     def schedule_graph_update(self):
-        if self.realtime_checkbox.isChecked():
+        if self.realtime_checkbox and self.realtime_checkbox.isChecked():
                 self.update_timer.start(100)  # Delay in milliseconds
 
     def generate_graph(self):
@@ -326,8 +341,11 @@ class GraphViewer(QWidget):
             combined_graph.add_edges_from(spatial_graph.edges)
             combined_graph.add_edges_from(color_graph.edges)
         elif method == "Intersection":
-            common_edges = set(spatial_graph.edges).intersection(color_graph.edges)
-            combined_graph.add_edges_from(common_edges)
+            spatial_edges = {frozenset(edge) for edge in spatial_graph.edges}
+            color_edges = {frozenset(edge) for edge in color_graph.edges}
+            common_edges = spatial_edges.intersection(color_edges)
+            for edge in common_edges:
+                combined_graph.add_edge(*tuple(edge))
         else:
             raise ValueError(f"Unknown combination method: {method}")
 
