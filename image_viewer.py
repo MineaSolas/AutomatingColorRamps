@@ -261,3 +261,10 @@ class ImageViewer(QWidget):
             return self.original_pixmap.toImage().pixelColor(x, y).getRgb()
 
         return None
+
+    def cleanup(self):
+        try:
+            self.color_palette.clear()
+            selection_manager.unregister_listener(self.on_selection_change)
+        except:
+            pass

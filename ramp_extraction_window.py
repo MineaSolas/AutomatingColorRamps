@@ -192,4 +192,6 @@ class RampWindow(QWidget):
 
             self.ramp_layout.addWidget(row_widget)
 
-
+    def closeEvent(self, event):
+        self.mini_viewer.cleanup()
+        super().closeEvent(event)
