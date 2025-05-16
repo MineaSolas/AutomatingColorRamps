@@ -48,7 +48,7 @@ class RampExtractionViewer(QWidget):
 
         # Clustering
         self.remove_similar_checkbox = QCheckBox("Cluster and Remove Similar Ramps")
-        self.remove_similar_checkbox.setChecked(True)
+        self.remove_similar_checkbox.setChecked(False)
         general_layout.addWidget(self.remove_similar_checkbox)
 
         # Remove Label Row
@@ -66,7 +66,7 @@ class RampExtractionViewer(QWidget):
         self.skip_permutations_checkbox = QCheckBox("Permut")
         self.skip_reverse_checkbox.setChecked(True)
         self.skip_subsequences_checkbox.setChecked(True)
-        self.skip_permutations_checkbox.setChecked(True)
+        self.skip_permutations_checkbox.setChecked(False)
         checkboxes_row.addWidget(self.skip_reverse_checkbox)
         checkboxes_row.addWidget(self.skip_subsequences_checkbox)
         checkboxes_row.addWidget(self.skip_permutations_checkbox)
@@ -105,6 +105,7 @@ class RampExtractionViewer(QWidget):
         # Extract Button
         self.extract_button = QPushButton("Extract Ramps")
         self.extract_button.clicked.connect(self.extract_color_ramps)
+        self.extract_button.setDisabled(True)
         left_panel_layout.addWidget(self.extract_button)
 
         main_layout.addWidget(left_panel, stretch=1)
@@ -232,6 +233,10 @@ class RampExtractionViewer(QWidget):
         self.vector_controls.setVisible(method == "Vector HSV")
         self.ciede_controls.setVisible(method == "CIEDE2000")
 
+    def update_extract_button_state(self):
+        has_graph = self.graph_viewer.color_graph is not None and len(self.graph_viewer.color_graph.nodes) > 0
+        self.extract_button.setEnabled(has_graph)
+
     def extract_color_ramps(self):
         graph = self.graph_viewer.color_graph
         if graph is None:
@@ -252,7 +257,7 @@ class RampExtractionViewer(QWidget):
             skip_permutations=skip_permutations
         )
 
-        if remove_similar:
+        if len(ramps) > 2 and remove_similar:
             ramps = self.remove_similar_ramps(ramps)
 
         self.display_color_ramps(ramps)

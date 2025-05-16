@@ -4,12 +4,11 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSlider, QPushButton,
     QLabel, QSizePolicy, QCheckBox, QGridLayout, QGroupBox
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib import pyplot as plt
 
 from color_utils import extract_adjacent_color_pairs, is_similar_hsv, is_similar_ciede2000
-
 
 class GraphViewer(QWidget):
     def __init__(self, image_array, unique_colors, parent=None):
@@ -29,6 +28,8 @@ class GraphViewer(QWidget):
         self._setup_ui()
         self.connect_updates()
         self.update_ui_visibility()
+
+    graph_updated = pyqtSignal()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -293,6 +294,7 @@ class GraphViewer(QWidget):
 
         self.color_graph = graph
         self.display_graph(graph)
+        self.graph_updated.emit()
 
     def generate_spatial_graph(self):
         self.calculate_adjacency_pairs()

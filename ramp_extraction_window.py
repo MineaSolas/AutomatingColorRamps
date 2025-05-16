@@ -37,6 +37,7 @@ class RampWindow(QWidget):
 
         # Bottom-Right: Ramp Extraction
         self.ramp_extraction_widget = RampExtractionViewer(self.graph_viewer)
+        self.graph_viewer.graph_updated.connect(self.ramp_extraction_widget.update_extract_button_state)
         layout.addWidget(self.ramp_extraction_widget, 1, 1)
 
         # Ensure all grid cells are equal
