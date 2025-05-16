@@ -313,8 +313,9 @@ class RampExtractionViewer(QWidget):
 
             self.ramps_layout.addWidget(row_widget)
 
-    @staticmethod
-    def find_color_ramps(graph, method="Basic HSV", params=None, skip_reverse=False, skip_subsequences=True, skip_permutations=True):
+        self.finish_progress()
+
+    def find_color_ramps(self, graph, method="Basic HSV", params=None, skip_reverse=False, skip_subsequences=True, skip_permutations=True):
         if params is None:
             params = {}
 
@@ -325,7 +326,7 @@ class RampExtractionViewer(QWidget):
 
         i = 0
         for start in sorted_nodes:
-            print(f"Processing... {i}/{n}")
+            self.update_progress("Extracting Ramps...", i, n)
             i += 1
 
             stack = [(start, [start])]
@@ -348,7 +349,6 @@ class RampExtractionViewer(QWidget):
                         continue
                     ramps.append(path)
 
-        print(f"Done {n}/{n}")
         return ramps
 
     @staticmethod
@@ -498,10 +498,14 @@ class RampExtractionViewer(QWidget):
         from color_utils import color_to_hsv
 
         n = len(ramps)
+        total_pairs = (n * (n - 1)) // 2
+        pair_count = 0
         distance_matrix = np.zeros((n, n))
 
         for i in range(n):
             for j in range(i + 1, n):
+                pair_count += 1
+                self.update_progress("Computing Distances...", pair_count, total_pairs)
                 dist = RampExtractionViewer.ramp_edit_distance(
                     ramps[i], ramps[j],
                     swap_cost=0.5,
@@ -511,6 +515,7 @@ class RampExtractionViewer(QWidget):
                 distance_matrix[i, j] = dist
                 distance_matrix[j, i] = dist
 
+        self.update_progress("Clustering...", 0, 0)
         clustering = AgglomerativeClustering(
             metric='precomputed',
             linkage='average',
@@ -622,7 +627,7 @@ class RampExtractionViewer(QWidget):
     def show_ramp_clusters(self, ramps, labels):
         dialog = QDialog(self)
         dialog.setWindowTitle("Ramp Clusters")
-        dialog.resize(1000, 600)
+        dialog.resize(1200, 600)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -709,3 +714,13 @@ class RampExtractionViewer(QWidget):
         dialog_layout = QVBoxLayout(dialog)
         dialog_layout.addWidget(scroll)
         dialog.exec()
+
+    def update_progress(self, message, value, maximum):
+        parent_window = self.window()
+        if hasattr(parent_window, 'progress_overlay'):
+            parent_window.progress_overlay.update_progress(message, value, maximum)
+
+    def finish_progress(self):
+        parent_window = self.window()
+        if hasattr(parent_window, 'progress_overlay'):
+            parent_window.progress_overlay.finish()

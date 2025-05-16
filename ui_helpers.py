@@ -90,3 +90,37 @@ class VerticalLabel(QLabel):
         text_width = fm.horizontalAdvance(self.text())
         text_height = fm.height()
         return QSize(text_height, text_width)  # Swapped due to rotation
+
+
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar, QApplication
+from PyQt6.QtCore import Qt
+
+class ProgressOverlay(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet("background-color: rgba(0, 0, 0, 160);")
+        self.setGeometry(parent.rect())
+
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.message_label = QLabel("")
+        self.message_label.setStyleSheet("color: white; font-size: 16px;")
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setFixedWidth(400)
+
+        layout.addWidget(self.message_label)
+        layout.addWidget(self.progress_bar)
+        self.hide()
+
+    def update_progress(self, message, value, maximum):
+        self.message_label.setText(message)
+        self.progress_bar.setMaximum(maximum)
+        self.progress_bar.setValue(value)
+        if not self.isVisible():
+            self.show()
+        QApplication.processEvents()
+
+    def finish(self):
+        self.hide()

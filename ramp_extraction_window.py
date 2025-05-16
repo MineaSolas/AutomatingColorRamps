@@ -3,6 +3,7 @@ from PyQt6.QtCore import Qt
 from graph_viewer import GraphViewer
 from image_viewer import ImageViewer
 from ramp_extraction_viewer import RampExtractionViewer
+from ui_helpers import ProgressOverlay
 
 
 class RampWindow(QWidget):
@@ -44,6 +45,12 @@ class RampWindow(QWidget):
         layout.setColumnStretch(0, 1)
         layout.setColumnStretch(1, 1)
 
+        self.progress_overlay = ProgressOverlay(self)
+
     def closeEvent(self, event):
         self.mini_viewer.cleanup()
         super().closeEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.progress_overlay.setGeometry(self.rect())
