@@ -40,9 +40,21 @@ class RampExtractionViewer(QWidget):
         controls_layout.addWidget(self.ciede_controls)
         self.ciede_controls.hide()
 
-        controls_layout.addStretch()
-        controls_layout.setContentsMargins(0, 5, 0, 5)
+        remove_row = QHBoxLayout()
+        remove_label = QLabel("Remove:")
+        remove_label.setFixedWidth(60)
+        self.skip_reverse_checkbox = QCheckBox("Reverses")
+        self.skip_reverse_checkbox.setChecked(False)
+        self.skip_subsequences_checkbox = QCheckBox("Subsequences")
+        self.skip_subsequences_checkbox.setChecked(False)
+        remove_row.addWidget(remove_label)
+        remove_row.addWidget(self.skip_reverse_checkbox)
+        remove_row.addWidget(self.skip_subsequences_checkbox)
+        remove_row.addStretch()
+        controls_layout.addLayout(remove_row)
 
+        controls_layout.addStretch()
+        controls_layout.setContentsMargins(10, 5, 0, 5)
         main_layout.addWidget(controls_panel, stretch=0)
 
         # --- Right Panel: Method Dropdown and Ramps ---
@@ -81,6 +93,7 @@ class RampExtractionViewer(QWidget):
         layout = QGridLayout(widget)
         layout.setColumnStretch(0, 0)
         layout.setColumnStretch(1, 1)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         factors = [("Hue", 0, 180, "h"), ("Saturation", 0, 100, "s"), ("Value", 0, 100, "v")]
 
@@ -158,6 +171,7 @@ class RampExtractionViewer(QWidget):
     def _create_vector_controls(self):
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
         self.vector_angle_slider = self._create_slider("Angle Step Max (°)", 0, 180, 45, layout)
         self.vector_magnitude_slider = self._create_slider("Step Magnitude Max", 0, 100, 45, layout)
         return widget
@@ -165,6 +179,7 @@ class RampExtractionViewer(QWidget):
     def _create_ciede_controls(self):
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
         self.delta_e_slider = self._create_slider("ΔE2000 Step Max", 0, 50, 40, layout)
         self.delta_e_var_slider = self._create_slider("ΔE2000 Variance Tolerance", 0, 30, 15, layout)
         return widget
@@ -193,7 +208,15 @@ class RampExtractionViewer(QWidget):
 
         method = self.extraction_method_selector.currentText()
         params = self._get_extraction_params(method)
-        ramps = self.find_color_ramps(graph, method, params)
+        skip_subsequences = self.skip_subsequences_checkbox.isChecked()
+        skip_reverse = self.skip_reverse_checkbox.isChecked()
+
+        ramps = self.find_color_ramps(
+            graph, method, params,
+            skip_subsequences=skip_subsequences,
+            skip_reverse=skip_reverse
+        )
+
         self.display_color_ramps(ramps)
 
     def _get_extraction_params(self, method):
@@ -253,7 +276,7 @@ class RampExtractionViewer(QWidget):
             self.ramps_layout.addWidget(row_widget)
 
     @staticmethod
-    def find_color_ramps(graph, method="Basic HSV", params=None, skip_subsequences=True):
+    def find_color_ramps(graph, method="Basic HSV", params=None, skip_reverse=False, skip_subsequences=True):
         if params is None:
             params = {}
 
@@ -280,6 +303,8 @@ class RampExtractionViewer(QWidget):
                         extended = True
                 if not extended and len(path) >= 3:
                     if skip_subsequences and RampExtractionViewer.is_subsequence_of_any(path, ramps):
+                        continue
+                    if skip_reverse and any(path == list(reversed(r)) for r in ramps):
                         continue
                     ramps.append(path)
 
