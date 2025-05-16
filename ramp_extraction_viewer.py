@@ -1,7 +1,7 @@
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider, QPushButton,
-    QScrollArea, QSizePolicy, QCheckBox, QGroupBox, QGridLayout
+    QScrollArea, QSizePolicy, QCheckBox, QGroupBox, QGridLayout, QDialog
 )
 from PyQt6.QtCore import Qt
 from colormath.color_conversions import convert_color
@@ -9,7 +9,7 @@ from colormath.color_objects import sRGBColor, LabColor
 from pyciede2000 import ciede2000
 from sklearn.cluster import AgglomerativeClustering
 
-from color_utils import color_to_hsv, hsv_diffs
+from color_utils import color_to_hsv, hsv_diffs, is_similar_hsv
 from ui_helpers import VerticalLabel
 
 
@@ -45,9 +45,9 @@ class RampExtractionViewer(QWidget):
         remove_label = QLabel("Remove:")
         remove_label.setFixedWidth(60)
         self.skip_reverse_checkbox = QCheckBox("Reverses")
-        self.skip_reverse_checkbox.setChecked(False)
+        self.skip_reverse_checkbox.setChecked(True)
         self.skip_subsequences_checkbox = QCheckBox("Subsequences")
-        self.skip_subsequences_checkbox.setChecked(False)
+        self.skip_subsequences_checkbox.setChecked(True)
         remove_row.addWidget(remove_label)
         remove_row.addWidget(self.skip_reverse_checkbox)
         remove_row.addWidget(self.skip_subsequences_checkbox)
@@ -55,7 +55,7 @@ class RampExtractionViewer(QWidget):
         controls_layout.addLayout(remove_row)
 
         self.remove_similar_checkbox = QCheckBox("Cluster & Remove Similar Ramps")
-        self.remove_similar_checkbox.setChecked(False)
+        self.remove_similar_checkbox.setChecked(True)
         controls_layout.addWidget(self.remove_similar_checkbox)
 
         controls_layout.addStretch()
@@ -509,11 +509,7 @@ class RampExtractionViewer(QWidget):
         return final_ramps
 
     @staticmethod
-    def ramp_edit_distance(r1, r2, similarity_hsv_params=None, swap_cost=0.5, insertion_cost=1.0,
-                           substitution_cost=1.0):
-        import numpy as np
-        from color_utils import is_similar_hsv
-
+    def ramp_edit_distance(r1, r2, similarity_hsv_params=None, swap_cost=0.5, insertion_cost=1.0, substitution_cost=1.0):
         if similarity_hsv_params is None:
             similarity_hsv_params = {'hue_threshold': 15, 'sat_threshold': 0.1, 'val_threshold': 0.1}
 
@@ -551,8 +547,10 @@ class RampExtractionViewer(QWidget):
         best_score = -np.inf
         best_ramp = ramps[0]
 
+        ramp_lengths = [len(r) for r in ramps]
+
         for ramp in ramps:
-            score = RampExtractionViewer.evaluate_ramp_smoothness(ramp)
+            (score, _, _, _, _) = RampExtractionViewer.evaluate_ramp_smoothness(ramp, min(ramp_lengths))
             if score > best_score:
                 best_score = score
                 best_ramp = ramp
@@ -560,31 +558,37 @@ class RampExtractionViewer(QWidget):
         return best_ramp
 
     @staticmethod
-    def evaluate_ramp_smoothness(ramp):
+    def evaluate_ramp_smoothness(ramp, min_length_in_cluster=3):
         diffs = hsv_diffs(ramp)
         step_sizes = np.linalg.norm(diffs, axis=1)
 
         # Variance penalty
-        variance = np.var(step_sizes)
-        variance_penalty = 1 / (1 + variance)
+        std_devs = np.std(diffs, axis=0)
+        variance_penalty = np.mean(std_devs)
 
-        # Monotonicity
-        monotonicity_count = 0
-        for i in range(3):  # H, S, V
-            if RampExtractionViewer.is_monotonic_direction(diffs[:, i]):
-                monotonicity_count += 1
-        monotonicity_score = monotonicity_count / 3
+        # Monotonicity score
+        monotonicity_count = sum(
+            RampExtractionViewer.is_monotonic_direction(diffs[:, i]) for i in range(3)
+        )
+        if monotonicity_count == 3:
+            monotonicity_score = 0.1
+        elif monotonicity_count == 2:
+            monotonicity_score = 0.05
+        else:
+            monotonicity_score = 0.01
 
         # Step Size Penalty (penalize extremes)
         preferred_center = 0.15
         preferred_range = 0.15
-        penalty = np.mean(((step_sizes - preferred_center) / preferred_range) ** 2)
+        penalty = np.mean(((step_sizes - preferred_center) / preferred_range) ** 2) * 0.2
 
-        return variance_penalty + monotonicity_score - penalty
+        length_boost = 0.01 * (len(ramp) - min_length_in_cluster)
+
+        final_score = - variance_penalty - penalty + length_boost + monotonicity_score
+
+        return final_score, variance_penalty, penalty, length_boost, monotonicity_score
 
     def show_ramp_clusters(self, ramps, labels):
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget, QHBoxLayout
-
         dialog = QDialog(self)
         dialog.setWindowTitle("Ramp Clusters")
         dialog.resize(1000, 600)
@@ -594,8 +598,8 @@ class RampExtractionViewer(QWidget):
         container = QWidget()
         layout = QVBoxLayout(container)
 
-        import numpy as np
         unique_labels = np.unique(labels)
+        max_ramp_length = max(len(r) for r in ramps)
 
         for cluster_id in unique_labels:
             cluster_label = QLabel(f"Cluster {cluster_id + 1}")
@@ -603,19 +607,70 @@ class RampExtractionViewer(QWidget):
             layout.addWidget(cluster_label)
 
             ramp_indices = np.where(labels == cluster_id)[0]
-            for idx in ramp_indices:
-                ramp = ramps[idx]
+            candidate_ramps = [ramps[i] for i in ramp_indices]
+            ramp_lengths = [len(r) for r in candidate_ramps]
+
+            # Compute goodness scores and factors
+            results = [self.evaluate_ramp_smoothness(ramp, min(ramp_lengths)) for ramp in candidate_ramps]
+            scores = [res[0] for res in results]
+            best_index = np.argmax(scores)
+
+            for idx_in_cluster, (ramp, (score, var_penalty, size_penalty, length_boost, mono_score)) in enumerate(
+                    zip(candidate_ramps, results)):
                 row_widget = QWidget()
                 row_layout = QHBoxLayout(row_widget)
                 row_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-                row_layout.setSpacing(0)
+                row_layout.setSpacing(10)
+
+                # Swatches Area (Auto Width, Left-Aligned, No Gaps)
+                swatches_widget = QWidget()
+                swatches_layout = QHBoxLayout(swatches_widget)
+                swatches_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+                swatches_layout.setContentsMargins(0, 0, 0, 0)
+                swatches_layout.setSpacing(0)
 
                 for color in ramp:
                     r, g, b, a = color
                     swatch = QLabel()
                     swatch.setFixedSize(25, 25)
-                    swatch.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
-                    row_layout.addWidget(swatch)
+                    swatch.setStyleSheet(
+                        f"background-color: rgba({r},{g},{b},{a}); border: none; margin: 0px; padding: 0px;")
+                    swatches_layout.addWidget(swatch)
+
+                row_layout.addWidget(swatches_widget)
+
+                # Selection Label (Fixed Width)
+                is_selected = idx_in_cluster == best_index
+                selected_label = QLabel("[Selected]" if is_selected else "")
+                selected_label.setStyleSheet("""
+                    font-weight: bold; 
+                    color: green;
+                    font-family: monospace;
+                """)
+                row_layout.addWidget(selected_label)
+                row_layout.addStretch()
+
+                # Goodness Factors Label with Colored Factors if Selected
+                if is_selected:
+                    factor_style = "color: green; font-weight: bold;"
+                else:
+                    factor_style = ""
+
+                factors_html = (
+                    f"<span style='font-family: monospace;'>"
+                    f"Good: <span style='{factor_style}'>{score:.3f}</span>, "
+                    f"Var: <span style='{factor_style}'>-{var_penalty:.3f}</span>, "
+                    f"Siz: <span style='{factor_style}'>-{size_penalty:.3f}</span>, "
+                    f"Len: <span style='{factor_style}'>{length_boost:.2f}</span>, "
+                    f"Mon: <span style='{factor_style}'>{mono_score:.2f}</span>"
+                    f"</span>"
+                )
+
+                factors_label = QLabel()
+                factors_label.setTextFormat(Qt.TextFormat.RichText)
+                factors_label.setText(factors_html)
+                factors_label.setFixedWidth(600)
+                row_layout.addWidget(factors_label)
 
                 layout.addWidget(row_widget)
 
