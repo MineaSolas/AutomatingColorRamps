@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider, QPushButton,
@@ -415,8 +417,8 @@ class RampExtractionViewer(QWidget):
             for i in range(len(lab_colors) - 1)
         ]
 
-        if not RampExtractionViewer.is_monotonic_delta_e(delta_e_steps):
-            return False
+        # if not RampExtractionViewer.is_monotonic_delta_e(delta_e_steps):
+        #     return False
 
         # Check max ΔE threshold
         if any(de > max_delta_e for de in delta_e_steps):
@@ -472,7 +474,10 @@ class RampExtractionViewer(QWidget):
         if not ramps:
             return ramps
 
-        # Compute pairwise edit distances
+        import numpy as np
+        from sklearn.cluster import AgglomerativeClustering
+        from color_utils import color_to_hsv
+
         n = len(ramps)
         distance_matrix = np.zeros((n, n))
 
@@ -481,12 +486,12 @@ class RampExtractionViewer(QWidget):
                 dist = RampExtractionViewer.ramp_edit_distance(
                     ramps[i], ramps[j],
                     swap_cost=0.5,
-                    insertion_cost=1.0
+                    insertion_cost=1.0,
+                    permutation_penalty=0.0
                 )
                 distance_matrix[i, j] = dist
                 distance_matrix[j, i] = dist
 
-        # Cluster ramps based on edit distance
         clustering = AgglomerativeClustering(
             metric='precomputed',
             linkage='average',
@@ -495,9 +500,10 @@ class RampExtractionViewer(QWidget):
         )
         clustering.fit(distance_matrix)
         labels = clustering.labels_
+
         self.show_ramp_clusters(ramps, labels)
 
-        # Select the smoothest ramp from each cluster
+        # Select the best ramp from each cluster
         final_ramps = []
         for label in np.unique(labels):
             indices = np.where(labels == label)[0]
@@ -505,13 +511,19 @@ class RampExtractionViewer(QWidget):
             best_ramp = RampExtractionViewer.select_best_ramp(candidate_ramps)
             final_ramps.append(best_ramp)
 
-        final_ramps.sort(key=lambda ramp: color_to_hsv(ramp[0])[2])
+        # Sort final ramps by brightness of the first color (V in HSV)
+        final_ramps.sort(key=lambda r: color_to_hsv(r[0])[2])
+
         return final_ramps
 
     @staticmethod
-    def ramp_edit_distance(r1, r2, similarity_hsv_params=None, swap_cost=0.5, insertion_cost=1.0, substitution_cost=1.0):
+    def ramp_edit_distance(r1, r2, similarity_hsv_params=None, swap_cost=0.5, insertion_cost=1.0, substitution_cost=1.0, permutation_penalty=0.0):
         if similarity_hsv_params is None:
             similarity_hsv_params = {'hue_threshold': 15, 'sat_threshold': 0.1, 'val_threshold': 0.1}
+
+        # Quick check: same colors, just reordered
+        if set(r1) == set(r2):
+            return permutation_penalty
 
         len_r1, len_r2 = len(r1), len(r2)
         dp = np.zeros((len_r1 + 1, len_r2 + 1))
@@ -526,17 +538,17 @@ class RampExtractionViewer(QWidget):
                 c1, c2 = r1[i - 1], r2[j - 1]
 
                 if is_similar_hsv(c1, c2, **similarity_hsv_params):
-                    subst_cost = 0  # Colors are similar enough → no cost
+                    subst_cost = 0
                 else:
-                    subst_cost = substitution_cost  # Full substitution cost
+                    subst_cost = substitution_cost
 
                 dp[i][j] = np.min([
-                    dp[i - 1][j] + insertion_cost,  # Deletion
-                    dp[i][j - 1] + insertion_cost,  # Insertion
-                    dp[i - 1][j - 1] + subst_cost  # Substitution
+                    dp[i - 1][j] + insertion_cost,
+                    dp[i][j - 1] + insertion_cost,
+                    dp[i - 1][j - 1] + subst_cost
                 ])
 
-                # Handle swap (Damerau-Levenshtein)
+                # Handle adjacent swaps (Damerau-Levenshtein)
                 if i > 1 and j > 1 and r1[i - 1] == r2[j - 2] and r1[i - 2] == r2[j - 1]:
                     dp[i, j] = min(float(dp[i, j]), float(dp[i - 2, j - 2] + swap_cost))
 
@@ -599,7 +611,6 @@ class RampExtractionViewer(QWidget):
         layout = QVBoxLayout(container)
 
         unique_labels = np.unique(labels)
-        max_ramp_length = max(len(r) for r in ramps)
 
         for cluster_id in unique_labels:
             cluster_label = QLabel(f"Cluster {cluster_id + 1}")
