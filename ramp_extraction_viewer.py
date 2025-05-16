@@ -46,6 +46,19 @@ class RampExtractionViewer(QWidget):
         general_controls_group = QGroupBox()
         general_layout = QVBoxLayout(general_controls_group)
 
+        # Max Ramp Length Slider
+        max_length_row = QHBoxLayout()
+        self.max_length_label = QLabel("Max Ramp Length: 20")
+        self.max_length_slider = QSlider(Qt.Orientation.Horizontal)
+        self.max_length_slider.setRange(3, 20)
+        self.max_length_slider.setValue(20)
+        self.max_length_slider.valueChanged.connect(
+            lambda val: self.max_length_label.setText(f"Max Ramp Length: {val}")
+        )
+        max_length_row.addWidget(self.max_length_label)
+        max_length_row.addWidget(self.max_length_slider)
+        general_layout.addLayout(max_length_row)
+
         # Clustering
         self.remove_similar_checkbox = QCheckBox("Cluster and Remove Similar Ramps")
         self.remove_similar_checkbox.setChecked(False)
@@ -247,11 +260,13 @@ class RampExtractionViewer(QWidget):
         remove_similar = self.remove_similar_checkbox.isChecked()
 
         skip_subsequences = self.skip_subsequences_checkbox.isChecked()
-        skip_reverse = self.skip_reverse_checkbox.isChecked() and not skip_subsequences
+        skip_reverse = self.skip_reverse_checkbox.isChecked()
         skip_permutations = self.skip_permutations_checkbox.isChecked()
+        max_ramp_length = self.max_length_slider.value()
 
         ramps = self.find_color_ramps(
             graph, method, params,
+            max_length=max_ramp_length,
             skip_subsequences=skip_subsequences,
             skip_reverse=skip_reverse,
             skip_permutations=skip_permutations
@@ -320,7 +335,8 @@ class RampExtractionViewer(QWidget):
 
         self.finish_progress()
 
-    def find_color_ramps(self, graph, method="Basic HSV", params=None, skip_reverse=False, skip_subsequences=True, skip_permutations=True):
+    def find_color_ramps(self, graph, method="Basic HSV", params=None, max_length=20,
+                         skip_reverse=False, skip_subsequences=True, skip_permutations=True):
         if params is None:
             params = {}
 
@@ -337,14 +353,21 @@ class RampExtractionViewer(QWidget):
             stack = [(start, [start])]
             while stack:
                 current, path = stack.pop()
-                extended = False
-                for neighbor in graph.neighbors(current):
-                    if neighbor in path:
-                        continue
-                    new_path = path + [neighbor]
-                    if RampExtractionViewer.is_valid_ramp(new_path, method, params):
-                        stack.append((neighbor, new_path))
-                        extended = True
+
+                if len(path) == max_length:
+                    extended = False
+                else:
+                    extended = False
+                    for neighbor in graph.neighbors(current):
+                        if neighbor in path:
+                            continue
+                        new_path = path + [neighbor]
+                        if len(new_path) > max_length:
+                            continue
+                        if RampExtractionViewer.is_valid_ramp(new_path, method, params):
+                            stack.append((neighbor, new_path))
+                            extended = True
+
                 if not extended and len(path) >= 3:
                     if skip_permutations and any(set(path) == set(r) for r in ramps):
                         continue
