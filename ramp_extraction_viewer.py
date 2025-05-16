@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt
 from colormath.color_conversions import convert_color
 from colormath.color_objects import sRGBColor, LabColor
 from pyciede2000 import ciede2000
+from sklearn.cluster import AgglomerativeClustering
 
 from color_utils import color_to_hsv, hsv_diffs
 from ui_helpers import VerticalLabel
@@ -53,6 +54,10 @@ class RampExtractionViewer(QWidget):
         remove_row.addStretch()
         controls_layout.addLayout(remove_row)
 
+        self.remove_similar_checkbox = QCheckBox("Cluster & Remove Similar Ramps")
+        self.remove_similar_checkbox.setChecked(False)
+        controls_layout.addWidget(self.remove_similar_checkbox)
+
         controls_layout.addStretch()
         controls_layout.setContentsMargins(10, 5, 0, 5)
         main_layout.addWidget(controls_panel, stretch=0)
@@ -89,6 +94,16 @@ class RampExtractionViewer(QWidget):
         main_layout.addWidget(left_panel, stretch=1)
 
     def _create_basic_controls(self):
+        self.h_slider = None
+        self.s_slider = None
+        self.v_slider = None
+        self.h_min_slider = None
+        self.s_min_slider = None
+        self.v_min_slider = None
+        self.h_tol_slider = None
+        self.s_tol_slider = None
+        self.v_tol_slider = None
+
         widget = QWidget()
         layout = QGridLayout(widget)
         layout.setColumnStretch(0, 0)
@@ -117,7 +132,7 @@ class RampExtractionViewer(QWidget):
             setattr(self, f"{attr_prefix}_tol_slider", self._create_slider("Step Variance Max", 0, 100, 20, group_layout))
             layout.addWidget(group_box, row, 1)
 
-        self.monotonicity_checkbox = QCheckBox("Monotonous")
+        self.monotonicity_checkbox = QCheckBox("Monotonous HSV Directions")
         layout.addWidget(self.monotonicity_checkbox, len(factors), 0, 1, 2)
 
         return widget
@@ -210,12 +225,16 @@ class RampExtractionViewer(QWidget):
         params = self._get_extraction_params(method)
         skip_subsequences = self.skip_subsequences_checkbox.isChecked()
         skip_reverse = self.skip_reverse_checkbox.isChecked()
+        remove_similar = self.remove_similar_checkbox.isChecked()
 
         ramps = self.find_color_ramps(
             graph, method, params,
             skip_subsequences=skip_subsequences,
             skip_reverse=skip_reverse
         )
+
+        if remove_similar:
+            ramps = self.remove_similar_ramps(ramps)
 
         self.display_color_ramps(ramps)
 
@@ -449,4 +468,159 @@ class RampExtractionViewer(QWidget):
                     return True
         return False
 
+    def remove_similar_ramps(self, ramps, distance_threshold=2):
+        if not ramps:
+            return ramps
 
+        # Compute pairwise edit distances
+        n = len(ramps)
+        distance_matrix = np.zeros((n, n))
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                dist = RampExtractionViewer.ramp_edit_distance(
+                    ramps[i], ramps[j],
+                    swap_cost=0.5,
+                    insertion_cost=1.0
+                )
+                distance_matrix[i, j] = dist
+                distance_matrix[j, i] = dist
+
+        # Cluster ramps based on edit distance
+        clustering = AgglomerativeClustering(
+            metric='precomputed',
+            linkage='average',
+            distance_threshold=distance_threshold,
+            n_clusters=None
+        )
+        clustering.fit(distance_matrix)
+        labels = clustering.labels_
+        self.show_ramp_clusters(ramps, labels)
+
+        # Select the smoothest ramp from each cluster
+        final_ramps = []
+        for label in np.unique(labels):
+            indices = np.where(labels == label)[0]
+            candidate_ramps = [ramps[i] for i in indices]
+            best_ramp = RampExtractionViewer.select_best_ramp(candidate_ramps)
+            final_ramps.append(best_ramp)
+
+        final_ramps.sort(key=lambda ramp: color_to_hsv(ramp[0])[2])
+        return final_ramps
+
+    @staticmethod
+    def ramp_edit_distance(r1, r2, similarity_hsv_params=None, swap_cost=0.5, insertion_cost=1.0,
+                           substitution_cost=1.0):
+        import numpy as np
+        from color_utils import is_similar_hsv
+
+        if similarity_hsv_params is None:
+            similarity_hsv_params = {'hue_threshold': 15, 'sat_threshold': 0.1, 'val_threshold': 0.1}
+
+        len_r1, len_r2 = len(r1), len(r2)
+        dp = np.zeros((len_r1 + 1, len_r2 + 1))
+
+        for i in range(len_r1 + 1):
+            dp[i][0] = i * insertion_cost
+        for j in range(len_r2 + 1):
+            dp[0][j] = j * insertion_cost
+
+        for i in range(1, len_r1 + 1):
+            for j in range(1, len_r2 + 1):
+                c1, c2 = r1[i - 1], r2[j - 1]
+
+                if is_similar_hsv(c1, c2, **similarity_hsv_params):
+                    subst_cost = 0  # Colors are similar enough → no cost
+                else:
+                    subst_cost = substitution_cost  # Full substitution cost
+
+                dp[i][j] = np.min([
+                    dp[i - 1][j] + insertion_cost,  # Deletion
+                    dp[i][j - 1] + insertion_cost,  # Insertion
+                    dp[i - 1][j - 1] + subst_cost  # Substitution
+                ])
+
+                # Handle swap (Damerau-Levenshtein)
+                if i > 1 and j > 1 and r1[i - 1] == r2[j - 2] and r1[i - 2] == r2[j - 1]:
+                    dp[i, j] = min(float(dp[i, j]), float(dp[i - 2, j - 2] + swap_cost))
+
+        return dp[len_r1][len_r2]
+
+    @staticmethod
+    def select_best_ramp(ramps):
+        best_score = -np.inf
+        best_ramp = ramps[0]
+
+        for ramp in ramps:
+            score = RampExtractionViewer.evaluate_ramp_smoothness(ramp)
+            if score > best_score:
+                best_score = score
+                best_ramp = ramp
+
+        return best_ramp
+
+    @staticmethod
+    def evaluate_ramp_smoothness(ramp):
+        diffs = hsv_diffs(ramp)
+        step_sizes = np.linalg.norm(diffs, axis=1)
+
+        # Variance penalty
+        variance = np.var(step_sizes)
+        variance_penalty = 1 / (1 + variance)
+
+        # Monotonicity
+        monotonicity_count = 0
+        for i in range(3):  # H, S, V
+            if RampExtractionViewer.is_monotonic_direction(diffs[:, i]):
+                monotonicity_count += 1
+        monotonicity_score = monotonicity_count / 3
+
+        # Step Size Penalty (penalize extremes)
+        preferred_center = 0.15
+        preferred_range = 0.15
+        penalty = np.mean(((step_sizes - preferred_center) / preferred_range) ** 2)
+
+        return variance_penalty + monotonicity_score - penalty
+
+    def show_ramp_clusters(self, ramps, labels):
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget, QHBoxLayout
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Ramp Clusters")
+        dialog.resize(1000, 600)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        container = QWidget()
+        layout = QVBoxLayout(container)
+
+        import numpy as np
+        unique_labels = np.unique(labels)
+
+        for cluster_id in unique_labels:
+            cluster_label = QLabel(f"Cluster {cluster_id + 1}")
+            cluster_label.setStyleSheet("font-weight: bold; font-size: 14px; margin-top: 10px;")
+            layout.addWidget(cluster_label)
+
+            ramp_indices = np.where(labels == cluster_id)[0]
+            for idx in ramp_indices:
+                ramp = ramps[idx]
+                row_widget = QWidget()
+                row_layout = QHBoxLayout(row_widget)
+                row_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+                row_layout.setSpacing(0)
+
+                for color in ramp:
+                    r, g, b, a = color
+                    swatch = QLabel()
+                    swatch.setFixedSize(25, 25)
+                    swatch.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
+                    row_layout.addWidget(swatch)
+
+                layout.addWidget(row_widget)
+
+        scroll.setWidget(container)
+
+        dialog_layout = QVBoxLayout(dialog)
+        dialog_layout.addWidget(scroll)
+        dialog.exec()
