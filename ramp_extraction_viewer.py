@@ -43,23 +43,37 @@ class RampExtractionViewer(QWidget):
         controls_layout.addWidget(self.ciede_controls)
         self.ciede_controls.hide()
 
-        remove_row = QHBoxLayout()
+        general_controls_group = QGroupBox()
+        general_layout = QVBoxLayout(general_controls_group)
+
+        # Clustering
+        self.remove_similar_checkbox = QCheckBox("Cluster and Remove Similar Ramps")
+        self.remove_similar_checkbox.setChecked(True)
+        general_layout.addWidget(self.remove_similar_checkbox)
+
+        # Remove Label Row
+        remove_label_row = QHBoxLayout()
         remove_label = QLabel("Remove:")
         remove_label.setFixedWidth(60)
-        self.skip_reverse_checkbox = QCheckBox("Reverses")
+        remove_label_row.addWidget(remove_label)
+        remove_label_row.addStretch()
+        general_layout.addLayout(remove_label_row)
+
+        # Checkboxes Row
+        checkboxes_row = QHBoxLayout()
+        self.skip_reverse_checkbox = QCheckBox("Reverse")
+        self.skip_subsequences_checkbox = QCheckBox("Subseq")
+        self.skip_permutations_checkbox = QCheckBox("Permut")
         self.skip_reverse_checkbox.setChecked(True)
-        self.skip_subsequences_checkbox = QCheckBox("Subsequences")
         self.skip_subsequences_checkbox.setChecked(True)
-        remove_row.addWidget(remove_label)
-        remove_row.addWidget(self.skip_reverse_checkbox)
-        remove_row.addWidget(self.skip_subsequences_checkbox)
-        remove_row.addStretch()
-        controls_layout.addLayout(remove_row)
+        self.skip_permutations_checkbox.setChecked(True)
+        checkboxes_row.addWidget(self.skip_reverse_checkbox)
+        checkboxes_row.addWidget(self.skip_subsequences_checkbox)
+        checkboxes_row.addWidget(self.skip_permutations_checkbox)
+        checkboxes_row.addStretch()
+        general_layout.addLayout(checkboxes_row)
 
-        self.remove_similar_checkbox = QCheckBox("Cluster & Remove Similar Ramps")
-        self.remove_similar_checkbox.setChecked(True)
-        controls_layout.addWidget(self.remove_similar_checkbox)
-
+        controls_layout.addWidget(general_controls_group)
         controls_layout.addStretch()
         controls_layout.setContentsMargins(10, 5, 0, 5)
         main_layout.addWidget(controls_panel, stretch=0)
@@ -225,14 +239,17 @@ class RampExtractionViewer(QWidget):
 
         method = self.extraction_method_selector.currentText()
         params = self._get_extraction_params(method)
-        skip_subsequences = self.skip_subsequences_checkbox.isChecked()
-        skip_reverse = self.skip_reverse_checkbox.isChecked()
         remove_similar = self.remove_similar_checkbox.isChecked()
+
+        skip_subsequences = self.skip_subsequences_checkbox.isChecked()
+        skip_reverse = self.skip_reverse_checkbox.isChecked() and not skip_subsequences
+        skip_permutations = self.skip_permutations_checkbox.isChecked()
 
         ramps = self.find_color_ramps(
             graph, method, params,
             skip_subsequences=skip_subsequences,
-            skip_reverse=skip_reverse
+            skip_reverse=skip_reverse,
+            skip_permutations=skip_permutations
         )
 
         if remove_similar:
@@ -297,7 +314,7 @@ class RampExtractionViewer(QWidget):
             self.ramps_layout.addWidget(row_widget)
 
     @staticmethod
-    def find_color_ramps(graph, method="Basic HSV", params=None, skip_reverse=False, skip_subsequences=True):
+    def find_color_ramps(graph, method="Basic HSV", params=None, skip_reverse=False, skip_subsequences=True, skip_permutations=True):
         if params is None:
             params = {}
 
@@ -323,6 +340,8 @@ class RampExtractionViewer(QWidget):
                         stack.append((neighbor, new_path))
                         extended = True
                 if not extended and len(path) >= 3:
+                    if skip_permutations and any(set(path) == set(r) for r in ramps):
+                        continue
                     if skip_subsequences and RampExtractionViewer.is_subsequence_of_any(path, ramps):
                         continue
                     if skip_reverse and any(path == list(reversed(r)) for r in ramps):
