@@ -10,7 +10,7 @@ from pyciede2000 import ciede2000
 from sklearn.cluster import AgglomerativeClustering
 
 from color_utils import color_to_hsv, hsv_diffs, is_similar_hsv
-from palette import ColorRamp
+from palette import ColorRamp, final_palette_manager
 from ui_helpers import VerticalLabel
 
 
@@ -20,6 +20,7 @@ class RampExtractionViewer(QWidget):
         super().__init__(parent)
         self.graph_viewer = graph_viewer
         self._setup_ui()
+        final_palette_manager.register_listener(self.refresh_ramp_views)
 
     def _setup_ui(self):
         # Main layout
@@ -109,6 +110,7 @@ class RampExtractionViewer(QWidget):
         main_layout.addWidget(left_controls_container, stretch=0)
 
         # --- CENTER: Ramp Preview ---
+        self.generated_ramps = []
         self.ramps_scroll_area = QScrollArea()
         self.ramps_scroll_area.setWidgetResizable(True)
         self.ramp_container = QWidget()
@@ -124,11 +126,19 @@ class RampExtractionViewer(QWidget):
         main_layout.addWidget(self.ramp_preview_container, stretch=2)
 
         # --- RIGHT: Final Ramp Placeholder ---
-        self.final_ramp_placeholder = QLabel("Final Ramps (coming soon)")
-        self.final_ramp_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.final_ramp_placeholder.setStyleSheet("border: 1px solid #ccc; background-color: #f4f4f4;")
-        self.final_ramp_placeholder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        main_layout.addWidget(self.final_ramp_placeholder, stretch=1)
+        self.final_ramps_scroll_area = QScrollArea()
+        self.final_ramps_scroll_area.setWidgetResizable(True)
+        self.final_ramp_container = QWidget()
+        self.final_ramps_layout = QVBoxLayout(self.final_ramp_container)
+        self.final_ramps_layout.setSpacing(1)
+        self.final_ramps_layout.setContentsMargins(10, 10, 10, 10)
+        self.final_ramps_scroll_area.setWidget(self.final_ramp_container)
+
+        self.final_ramp_preview_container = QWidget()
+        self.final_ramp_preview_layout = QVBoxLayout(self.final_ramp_preview_container)
+        self.final_ramp_preview_layout.setContentsMargins(0, 0, 0, 0)
+        self.final_ramp_preview_layout.addWidget(self.final_ramps_scroll_area)
+        main_layout.addWidget(self.final_ramp_preview_container, stretch=2)
 
         # Initial control state
         self.update_extraction_controls()
@@ -322,17 +332,33 @@ class RampExtractionViewer(QWidget):
         return {}
 
     def display_color_ramps(self, ramps):
-        # Clear previous ramps
-        for i in reversed(range(self.ramps_layout.count())):
-            widget = self.ramps_layout.itemAt(i).widget()
-            if widget:
-                widget.deleteLater()
-
-        for ramp in ramps:
-            ramp_widget = ColorRamp(ramp)
-            self.ramps_layout.addWidget(ramp_widget)
-
+        self.generated_ramps = ramps
+        self.refresh_ramp_views()
         self.finish_progress()
+
+    def refresh_ramp_views(self):
+        self.clear_layout(self.ramps_layout)
+        self.clear_layout(self.final_ramps_layout)
+        final_ramps = final_palette_manager.get_ramps()
+
+        for ramp in self.generated_ramps:
+            widget = ColorRamp(ramp, swatch_size=25, source="generated")
+            widget.duplicated = ramp in final_ramps
+            widget.update_highlight()
+            self.ramps_layout.addWidget(widget)
+
+        for ramp in final_ramps:
+            widget = ColorRamp(ramp, swatch_size=25, source="final")
+            widget.duplicated = ramp in self.generated_ramps
+            widget.update_highlight()
+            self.final_ramps_layout.addWidget(widget)
+
+    @staticmethod
+    def clear_layout(layout):
+        while layout.count():
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
 
     def find_color_ramps(self, graph, method="Basic HSV", params=None, max_length=20,
                          skip_reverse=False, skip_subsequences=True, skip_permutations=True):
@@ -747,3 +773,11 @@ class RampExtractionViewer(QWidget):
         parent_window = self.window()
         if hasattr(parent_window, 'progress_overlay'):
             parent_window.progress_overlay.finish()
+
+    def cleanup(self):
+        try:
+            self.clear_layout(self.ramps_layout)
+            self.clear_layout(self.final_ramps_layout)
+            final_palette_manager.unregister_listener(self.refresh_ramp_views)
+        except:
+            pass

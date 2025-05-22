@@ -43,6 +43,7 @@ class RampWindow(QWidget):
 
     def closeEvent(self, event):
         self.mini_viewer.cleanup()
+        self.ramp_extraction_widget.cleanup()
         super().closeEvent(event)
 
     def resizeEvent(self, event):

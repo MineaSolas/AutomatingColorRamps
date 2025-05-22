@@ -1,12 +1,12 @@
-from PyQt6.QtGui import QEnterEvent
 from PyQt6.QtWidgets import QLabel, QWidget, QHBoxLayout
 from PyQt6.QtCore import Qt
 
 from ui_helpers import FlowLayout
 from color_utils import get_highlight_color
-from color_selection_manager import ColorSelectionManager
+from global_managers import ColorSelectionManager, FinalPaletteManager
 
 selection_manager = ColorSelectionManager()
+final_palette_manager = FinalPaletteManager()
 
 class ColorLabel(QLabel):
     def __init__(self, color, size=40, show_border=True, parent=None):
@@ -77,37 +77,53 @@ class ColorPalette(QWidget):
         self.labels.clear()
 
 class ColorRamp(QWidget):
-    def __init__(self, color_ramp, swatch_size=25, parent=None):
+    def __init__(self, color_ramp, swatch_size=25, source="generated", parent=None):
         super().__init__(parent)
-        self.setObjectName("ColorRampRow")
-        self.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.color_ramp = color_ramp
+        self.swatch_size = swatch_size
+        self.source = source  # "generated" or "final"
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.duplicated = False
+        self.hovered = False
+        self.init_ui()
 
-        self.setStyleSheet("""
-            border: none;
-            background-color: transparent;
-        """)
-
+    def init_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(0)
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        for color in self.color_ramp:
+            label = ColorLabel(color, show_border=False, size=self.swatch_size)
+            label.setFixedHeight(self.swatch_size)
+            layout.addWidget(label)
+        self.update_highlight()
 
-        for color in color_ramp:
-            swatch = ColorLabel(color, show_border=False, size=swatch_size)
-            layout.addWidget(swatch)
+    def update_highlight(self):
+        if self.hovered:
+            bg = "#eaf7ff"
+            border = "#88ccee"
+        elif self.duplicated:
+            bg = "#eeeeee"
+            border = "#dddddd"
+        else:
+            bg = "transparent"
+            border = "transparent"
+        self.setStyleSheet(f"border: 3px solid {border}; background-color: {bg};")
 
-    def enterEvent(self, event: QEnterEvent):
-        self.setStyleSheet("""
-            border: 3px solid #ffff00;
-            background-color: #ffffaa;
-        """)
+    def enterEvent(self, event):
+        self.hovered = True
+        self.update_highlight()
 
     def leaveEvent(self, event):
-        self.setStyleSheet("""
-            border: none;
-            background-color: transparent;
-        """)
+        self.hovered = False
+        self.update_highlight()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton and self.source == "final":
+            final_palette_manager.remove_ramp(self.color_ramp)
+        elif event.button() == Qt.MouseButton.LeftButton and self.source == "generated":
+            final_palette_manager.add_ramp(self.color_ramp)
 
     def deleteLater(self):
         for i in range(self.layout().count()):
