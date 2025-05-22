@@ -87,6 +87,7 @@ class ColorRamp(QWidget):
         self.duplicated = False
         self.hovered = False
         self.init_ui()
+        self.setFixedHeight(swatch_size + 16)
 
     def init_ui(self):
         layout = QHBoxLayout(self)
@@ -95,7 +96,6 @@ class ColorRamp(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         for color in self.color_ramp:
             label = ColorLabel(color, show_border=False, size=self.swatch_size)
-            label.setFixedHeight(self.swatch_size)
             layout.addWidget(label)
         self.update_highlight()
 

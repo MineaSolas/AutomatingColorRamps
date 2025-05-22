@@ -19,6 +19,8 @@ class RampExtractionViewer(QWidget):
     def __init__(self, graph_viewer, parent=None):
         super().__init__(parent)
         self.graph_viewer = graph_viewer
+        self.generated_ramp_widgets = {}
+        self.final_ramp_widgets = {}
         self._setup_ui()
         final_palette_manager.register_listener(self.refresh_ramp_views)
 
@@ -333,25 +335,56 @@ class RampExtractionViewer(QWidget):
 
     def display_color_ramps(self, ramps):
         self.generated_ramps = ramps
-        self.refresh_ramp_views()
+        self.clear_layout(self.ramps_layout)
+        self.generated_ramp_widgets.clear()
+
+        for ramp in ramps:
+            widget = ColorRamp(ramp, source="generated")
+            widget.duplicated = ramp in final_palette_manager.get_ramps()
+            widget.update_highlight()
+            self.generated_ramp_widgets[tuple(ramp)] = widget
+            self.ramps_layout.addWidget(widget)
+
+        self.update_duplicates()
         self.finish_progress()
 
     def refresh_ramp_views(self):
-        self.clear_layout(self.ramps_layout)
-        self.clear_layout(self.final_ramps_layout)
-        final_ramps = final_palette_manager.get_ramps()
+        current = set(tuple(r) for r in final_palette_manager.get_ramps())
+        existing = set(self.final_ramp_widgets.keys())
 
-        for ramp in self.generated_ramps:
-            widget = ColorRamp(ramp, swatch_size=25, source="generated")
-            widget.duplicated = ramp in final_ramps
-            widget.update_highlight()
-            self.ramps_layout.addWidget(widget)
+        to_add = current - existing
+        to_remove = existing - current
 
-        for ramp in final_ramps:
-            widget = ColorRamp(ramp, swatch_size=25, source="final")
-            widget.duplicated = ramp in self.generated_ramps
-            widget.update_highlight()
+        # Remove old widgets
+        for key in to_remove:
+            widget = self.final_ramp_widgets.pop(key)
+            self.final_ramps_layout.removeWidget(widget)
+            widget.deleteLater()
+
+        # Add new ones
+        for key in to_add:
+            ramp = list(key)
+            widget = ColorRamp(ramp, source="final")
+            self.final_ramp_widgets[key] = widget
             self.final_ramps_layout.addWidget(widget)
+
+        self.update_duplicates()
+
+    def update_duplicates(self):
+        generated_keys = set(self.generated_ramp_widgets.keys())
+        final_keys = set(self.final_ramp_widgets.keys())
+
+        shared = generated_keys & final_keys
+
+        # Update generated
+        for key, widget in self.generated_ramp_widgets.items():
+            widget.duplicated = key in shared
+            widget.update_highlight()
+
+        # Update final
+        for key, widget in self.final_ramp_widgets.items():
+            widget.duplicated = key in shared
+            widget.update_highlight()
 
     @staticmethod
     def clear_layout(layout):
@@ -778,6 +811,8 @@ class RampExtractionViewer(QWidget):
         try:
             self.clear_layout(self.ramps_layout)
             self.clear_layout(self.final_ramps_layout)
+            self.generated_ramp_widgets.clear()
+            self.final_ramp_widgets.clear()
             final_palette_manager.unregister_listener(self.refresh_ramp_views)
         except:
             pass
