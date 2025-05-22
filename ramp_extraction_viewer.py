@@ -1,7 +1,7 @@
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider, QPushButton,
-    QScrollArea, QSizePolicy, QCheckBox, QGroupBox, QGridLayout, QDialog
+    QScrollArea, QSizePolicy, QCheckBox, QGroupBox, QGridLayout, QDialog, QSpacerItem
 )
 from PyQt6.QtCore import Qt
 from colormath.color_conversions import convert_color
@@ -10,6 +10,7 @@ from pyciede2000 import ciede2000
 from sklearn.cluster import AgglomerativeClustering
 
 from color_utils import color_to_hsv, hsv_diffs, is_similar_hsv
+from palette import ColorRamp
 from ui_helpers import VerticalLabel
 
 
@@ -21,17 +22,17 @@ class RampExtractionViewer(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        # Main horizontal layout
+        # Main layout
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 6)
         main_layout.setSpacing(10)
 
-        # --- Left Panel: Controls ---
+        # --- LEFT PANEL: Controls ---
         left_controls_container = QWidget()
         left_layout = QVBoxLayout(left_controls_container)
         left_layout.setSpacing(10)
 
-        # Create method selector dropdown
+        # Create method dropdown
         self.extraction_method_selector = QComboBox()
         self.extraction_method_selector.addItems(["Basic HSV", "Vector HSV", "CIEDE2000"])
         self.extraction_method_selector.currentTextChanged.connect(self.update_extraction_controls)
@@ -39,11 +40,11 @@ class RampExtractionViewer(QWidget):
         method_dropdown_row = QWidget()
         method_dropdown_layout = QHBoxLayout(method_dropdown_row)
         method_dropdown_layout.setContentsMargins(0, 0, 0, 0)
-        method_dropdown_layout.addWidget(QLabel("Method:"))
+        method_dropdown_layout.addWidget(QLabel("Validation Method:"))
         method_dropdown_layout.addWidget(self.extraction_method_selector)
 
         # Create all controls
-        self.basic_controls = self._create_basic_controls()
+        self.basic_controls = self._create_basic_hsv_controls()
         self.vector_controls = self._create_vector_controls()
         self.ciede_controls = self._create_ciede_controls()
         self.max_length_label = QLabel("Max Ramp Length: 20")
@@ -53,34 +54,34 @@ class RampExtractionViewer(QWidget):
         self.max_length_slider.valueChanged.connect(
             lambda val: self.max_length_label.setText(f"Max Ramp Length: {val}")
         )
-        self.remove_similar_checkbox = QCheckBox("Cluster and Remove Similar Ramps")
+        self.remove_similar_checkbox = QCheckBox("Cluster and Reduce Similar Ramps")
         self.remove_similar_checkbox.setChecked(False)
 
-        self.skip_reverse_checkbox = QCheckBox("Reverse")
-        self.skip_subsequences_checkbox = QCheckBox("Subseq")
-        self.skip_permutations_checkbox = QCheckBox("Permut")
+        self.skip_reverse_checkbox = QCheckBox("Remove Reverses")
+        self.skip_subsequences_checkbox = QCheckBox("Remove Subsequences")
+        self.skip_permutations_checkbox = QCheckBox("Remove Permutations")
         self.skip_reverse_checkbox.setChecked(True)
         self.skip_subsequences_checkbox.setChecked(True)
         self.skip_permutations_checkbox.setChecked(False)
 
-        # Build general controls column
-        general_controls_group = QGroupBox("General Settings")
+        # General Controls Column
+        general_controls_group = QGroupBox()
         general_layout = QVBoxLayout(general_controls_group)
-        max_length_row = QHBoxLayout()
-        max_length_row.addWidget(self.max_length_label)
-        max_length_row.addWidget(self.max_length_slider)
-        general_layout.addLayout(max_length_row)
+        general_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        general_layout.addWidget(self.max_length_label)
+        general_layout.addWidget(self.max_length_slider)
         general_layout.addWidget(self.remove_similar_checkbox)
+        general_layout.addWidget(self.skip_reverse_checkbox)
+        general_layout.addWidget(self.skip_subsequences_checkbox)
+        general_layout.addWidget(self.skip_permutations_checkbox)
 
-        checkboxes_layout = QHBoxLayout()
-        checkboxes_layout.addWidget(self.skip_reverse_checkbox)
-        checkboxes_layout.addWidget(self.skip_subsequences_checkbox)
-        checkboxes_layout.addWidget(self.skip_permutations_checkbox)
-        general_layout.addLayout(checkboxes_layout)
-
-        # Build method-specific controls column
-        method_controls_layout = QVBoxLayout()
+        # Method Controls Column
+        method_controls_group = QGroupBox()
+        method_controls_layout = QVBoxLayout(method_controls_group)
         method_controls_layout.addWidget(method_dropdown_row)
+        method_controls_layout.addSpacerItem(QSpacerItem(0, 10, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed))
+        method_controls_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.method_stack = QWidget()
         self.method_stack_layout = QVBoxLayout(self.method_stack)
@@ -91,14 +92,15 @@ class RampExtractionViewer(QWidget):
         self.method_stack_layout.addWidget(self.ciede_controls)
         method_controls_layout.addWidget(self.method_stack)
 
-        # Combine both columns
+        # Combine both columns side-by-side
         columns_row = QHBoxLayout()
-        columns_row.addWidget(general_controls_group)
-        columns_row.addLayout(method_controls_layout)
+        columns_row.setSpacing(10)
+        columns_row.addWidget(general_controls_group, 1)
+        columns_row.addWidget(method_controls_group, 1)
+
         left_layout.addLayout(columns_row)
 
-        # Extract Button
-        # Extract Button
+        # Extract Button below both columns
         self.extract_button = QPushButton("Extract Ramps")
         self.extract_button.clicked.connect(self.extract_color_ramps)
         self.extract_button.setDisabled(True)
@@ -106,12 +108,13 @@ class RampExtractionViewer(QWidget):
 
         main_layout.addWidget(left_controls_container, stretch=0)
 
-        # --- Center: Ramp Display ---
+        # --- CENTER: Ramp Preview ---
         self.ramps_scroll_area = QScrollArea()
         self.ramps_scroll_area.setWidgetResizable(True)
         self.ramp_container = QWidget()
         self.ramps_layout = QVBoxLayout(self.ramp_container)
         self.ramps_layout.setSpacing(5)
+        self.ramps_layout.setContentsMargins(10, 10, 10, 10)
         self.ramps_scroll_area.setWidget(self.ramp_container)
 
         self.ramp_preview_container = QWidget()
@@ -120,16 +123,17 @@ class RampExtractionViewer(QWidget):
         self.ramp_preview_layout.addWidget(self.ramps_scroll_area)
         main_layout.addWidget(self.ramp_preview_container, stretch=2)
 
-        # --- Right: Final Ramps Placeholder ---
+        # --- RIGHT: Final Ramp Placeholder ---
         self.final_ramp_placeholder = QLabel("Final Ramps (coming soon)")
         self.final_ramp_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.final_ramp_placeholder.setStyleSheet("border: 1px solid #ccc; background-color: #f4f4f4;")
         self.final_ramp_placeholder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         main_layout.addWidget(self.final_ramp_placeholder, stretch=1)
 
+        # Initial control state
         self.update_extraction_controls()
 
-    def _create_basic_controls(self):
+    def _create_basic_hsv_controls(self):
         self.h_slider = None
         self.s_slider = None
         self.v_slider = None
@@ -157,6 +161,7 @@ class RampExtractionViewer(QWidget):
 
             group_box = QGroupBox()
             group_layout = QVBoxLayout(group_box)
+            group_layout.setSpacing(2)
 
             self._add_min_max_sliders(
                 min_val, max_val, 0, max_val // 2,
@@ -324,20 +329,8 @@ class RampExtractionViewer(QWidget):
                 widget.setParent(None)
 
         for ramp in ramps:
-            row_widget = QWidget()
-            row_layout = QHBoxLayout(row_widget)
-            row_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            row_layout.setContentsMargins(10, 0, 0, 0)
-            row_layout.setSpacing(0)
-
-            for color in ramp:
-                r, g, b, a = color
-                swatch = QLabel()
-                swatch.setFixedSize(25, 25)
-                swatch.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: none;  margin: 0px; padding: 0px;")
-                row_layout.addWidget(swatch)
-
-            self.ramps_layout.addWidget(row_widget)
+            ramp_widget = ColorRamp(ramp)
+            self.ramps_layout.addWidget(ramp_widget)
 
         self.finish_progress()
 

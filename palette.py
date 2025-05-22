@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QLabel, QWidget
+from PyQt6.QtWidgets import QLabel, QWidget, QHBoxLayout
 from PyQt6.QtCore import Qt
 
 from ui_helpers import FlowLayout
@@ -69,3 +69,23 @@ class ColorPalette(QWidget):
             self.layout.removeWidget(label)
             label.deleteLater()
         self.labels.clear()
+
+class ColorRamp(QWidget):
+    def __init__(self, color_ramp, swatch_size=25, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        for color in color_ramp:
+            r, g, b, a = color
+            swatch = QLabel()
+            swatch.setFixedSize(swatch_size, swatch_size)
+            swatch.setStyleSheet(
+                f"background-color: rgba({r},{g},{b},{a});"
+                "border: none;"
+                "margin: 0px; "
+                "padding: 0px;"
+            )
+            layout.addWidget(swatch)
