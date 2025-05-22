@@ -326,7 +326,7 @@ class RampExtractionViewer(QWidget):
         for i in reversed(range(self.ramps_layout.count())):
             widget = self.ramps_layout.itemAt(i).widget()
             if widget:
-                widget.setParent(None)
+                widget.deleteLater()
 
         for ramp in ramps:
             ramp_widget = ColorRamp(ramp)

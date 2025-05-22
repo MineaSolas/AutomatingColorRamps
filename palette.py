@@ -8,9 +8,10 @@ from color_selection_manager import ColorSelectionManager
 selection_manager = ColorSelectionManager()
 
 class ColorLabel(QLabel):
-    def __init__(self, color, size=40, parent=None):
+    def __init__(self, color, size=40, show_border=True, parent=None):
         super().__init__(parent)
         self.color = color
+        self.show_border = show_border
         self.setFixedSize(size, size)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update_border()
@@ -35,12 +36,18 @@ class ColorLabel(QLabel):
         is_hovered = selection_manager.hovered_color == self.color
 
         if is_hovered:
-            self.setStyleSheet(f"background-color: rgba{self.color}; border: 4px solid {selection_manager.highlight_color};")
+            self.setStyleSheet(f"border: 3px solid {selection_manager.highlight_color};")
         elif is_selected:
             selected_border_color = get_highlight_color(self.color)
-            self.setStyleSheet(f"background-color: rgba{self.color}; border: 6px solid {selected_border_color};")
+            self.setStyleSheet(f"border: 5px solid {selected_border_color};")
         else:
-            self.setStyleSheet(f"background-color: rgba{self.color}; border: 1px solid #000;")
+            border_style = "1px solid #000;" if self.show_border else "none;"
+            self.setStyleSheet(f"border: {border_style}")
+        self.set_background_color()
+
+    def set_background_color(self):
+        r, g, b, a = self.color
+        self.setStyleSheet(self.styleSheet() + f"; background-color: rgba({r},{g},{b},{a})")
 
     def deleteLater(self):
         selection_manager.unregister_listener(self.on_selection_change)
@@ -59,8 +66,6 @@ class ColorPalette(QWidget):
         self.clear()
         for color in colors:
             label = ColorLabel(color, size=square_size)
-            r, g, b, a = color
-            label.setStyleSheet(f"background-color: rgba({r},{g},{b},{a}); border: 1px solid #000;")
             self.labels[color] = label
             self.layout.addWidget(label)
 
@@ -79,13 +84,13 @@ class ColorRamp(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         for color in color_ramp:
-            r, g, b, a = color
-            swatch = QLabel()
-            swatch.setFixedSize(swatch_size, swatch_size)
-            swatch.setStyleSheet(
-                f"background-color: rgba({r},{g},{b},{a});"
-                "border: none;"
-                "margin: 0px; "
-                "padding: 0px;"
-            )
-            layout.addWidget(swatch)
+            swatch = ColorLabel(color, show_border=False, size=swatch_size)
+            self.layout().addWidget(swatch)
+
+    def deleteLater(self):
+        for i in range(self.layout().count()):
+            widget = self.layout().itemAt(i).widget()
+            if widget:
+                widget.deleteLater()
+        super().deleteLater()
+

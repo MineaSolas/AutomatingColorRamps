@@ -200,10 +200,7 @@ class ImageViewer(QWidget):
         r_target, g_target, b_target, a_target = target_color
         image = self.original_pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
         highlighted = QImage(image)
-
-        highlight_color = QColor(0, 255, 255, 255)  # Cyan for hover by default
-        if selection_manager.selected_color:
-            highlight_color = QColor(255, 0, 0, 255)  # Red for selection
+        highlight_color = QColor(selection_manager.highlight_color)
 
         for x in range(image.width()):
             for y in range(image.height()):
@@ -222,14 +219,14 @@ class ImageViewer(QWidget):
 
     def image_mouse_move(self, event):
         color = self.get_image_color_at_pos(event.pos())
-        if color:
+        if color and color[3] > 0:
             selection_manager.hover_color(color)
         else:
             selection_manager.clear_hover()
 
     def image_mouse_click(self, event):
         color = self.get_image_color_at_pos(event.pos())
-        if color:
+        if color and color[3] > 0:
             selection_manager.select_color(color)
         else:
             selection_manager.clear_selection()
