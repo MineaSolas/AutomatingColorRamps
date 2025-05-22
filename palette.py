@@ -120,10 +120,11 @@ class ColorRamp(QWidget):
         self.update_highlight()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.RightButton and self.source == "final":
-            final_palette_manager.remove_ramp(self.color_ramp)
-        elif event.button() == Qt.MouseButton.LeftButton and self.source == "generated":
-            final_palette_manager.add_ramp(self.color_ramp)
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.source == "generated":
+                final_palette_manager.add_ramp(self.color_ramp)
+            elif self.source == "final" and event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                final_palette_manager.remove_ramp(self.color_ramp)
 
     def deleteLater(self):
         for i in range(self.layout().count()):

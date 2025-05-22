@@ -10,17 +10,16 @@ from pyciede2000 import ciede2000
 from sklearn.cluster import AgglomerativeClustering
 
 from color_utils import color_to_hsv, hsv_diffs, is_similar_hsv
-from palette import ColorRamp, final_palette_manager
+from palette import ColorRamp, final_palette_manager, ColorPalette
 from ui_helpers import VerticalLabel
 
-
-
 class RampExtractionViewer(QWidget):
-    def __init__(self, graph_viewer, parent=None):
+    def __init__(self, graph_viewer, unique_colors, parent=None):
         super().__init__(parent)
         self.graph_viewer = graph_viewer
         self.generated_ramp_widgets = {}
         self.final_ramp_widgets = {}
+        self.unique_colors = set(unique_colors)
         self._setup_ui()
         final_palette_manager.register_listener(self.refresh_ramp_views)
 
@@ -112,6 +111,7 @@ class RampExtractionViewer(QWidget):
         main_layout.addWidget(left_controls_container, stretch=0)
 
         # --- CENTER: Ramp Preview ---
+        self.ramp_label = QLabel("Candidate Ramps")
         self.generated_ramps = []
         self.ramps_scroll_area = QScrollArea()
         self.ramps_scroll_area.setWidgetResizable(True)
@@ -124,10 +124,12 @@ class RampExtractionViewer(QWidget):
         self.ramp_preview_container = QWidget()
         self.ramp_preview_layout = QVBoxLayout(self.ramp_preview_container)
         self.ramp_preview_layout.setContentsMargins(0, 0, 0, 0)
+        self.ramp_preview_layout.addWidget(self.ramp_label)
         self.ramp_preview_layout.addWidget(self.ramps_scroll_area)
         main_layout.addWidget(self.ramp_preview_container, stretch=2)
 
         # --- RIGHT: Final Ramp Placeholder ---
+        self.selected_label = QLabel("Selected Ramps")
         self.final_ramps_scroll_area = QScrollArea()
         self.final_ramps_scroll_area.setWidgetResizable(True)
         self.final_ramp_container = QWidget()
@@ -139,11 +141,19 @@ class RampExtractionViewer(QWidget):
         self.final_ramp_preview_container = QWidget()
         self.final_ramp_preview_layout = QVBoxLayout(self.final_ramp_preview_container)
         self.final_ramp_preview_layout.setContentsMargins(0, 0, 0, 0)
+        self.final_ramp_preview_layout.addWidget(self.selected_label)
         self.final_ramp_preview_layout.addWidget(self.final_ramps_scroll_area)
+
+        self.unused_palette = ColorPalette()
+        self.unused_palette.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.unused_label = QLabel("Unused Colors:")
+        self.final_ramp_preview_layout.addWidget(self.unused_label)
+        self.final_ramp_preview_layout.addWidget(self.unused_palette)
+
         main_layout.addWidget(self.final_ramp_preview_container, stretch=2)
 
-        # Initial control state
         self.update_extraction_controls()
+        self.refresh_ramp_views()
 
     def _create_basic_hsv_controls(self):
         self.h_slider = None
@@ -369,6 +379,16 @@ class RampExtractionViewer(QWidget):
             self.final_ramps_layout.addWidget(widget)
 
         self.update_duplicates()
+
+        used_colors = {c for ramp in final_palette_manager.get_ramps() for c in ramp}
+        unused_colors = sorted(self.unique_colors - used_colors, key=lambda c: (c[3], c[0], c[1], c[2]))
+
+        if unused_colors:
+            self.unused_label.setText("Unused Colors:")
+        else:
+            self.unused_label.setText("Unused Colors: None")
+
+        self.unused_palette.populate(unused_colors, square_size=25)
 
     def update_duplicates(self):
         generated_keys = set(self.generated_ramp_widgets.keys())
@@ -813,6 +833,7 @@ class RampExtractionViewer(QWidget):
             self.clear_layout(self.final_ramps_layout)
             self.generated_ramp_widgets.clear()
             self.final_ramp_widgets.clear()
+            self.unused_palette.clear()
             final_palette_manager.unregister_listener(self.refresh_ramp_views)
         except:
             pass

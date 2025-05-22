@@ -19,17 +19,18 @@ class RampWindow(QWidget):
         # Top-Left: Image
         self.mini_viewer = ImageViewer(show_load_button=False, palette_square_size=25)
         self.mini_viewer.load_image(pixmap=loaded_pixmap)
+        unique_colors = self.mini_viewer.color_palette.labels.keys()
         layout.addWidget(self.mini_viewer, 0, 0)
 
         # Top-Right: Graph Extraction
         self.graph_viewer = GraphViewer(
             image_array=self.mini_viewer.get_image_array(),
-            unique_colors=self.mini_viewer.color_palette.labels.keys()
+            unique_colors=unique_colors
         )
         layout.addWidget(self.graph_viewer, 0, 1)
 
         # Bottom: Ramp Extraction
-        self.ramp_extraction_widget = RampExtractionViewer(self.graph_viewer)
+        self.ramp_extraction_widget = RampExtractionViewer(self.graph_viewer, unique_colors=unique_colors)
         self.graph_viewer.graph_updated.connect(self.ramp_extraction_widget.update_extract_button_state)
         layout.addWidget(self.ramp_extraction_widget, 1, 0, 1, 2)
 
