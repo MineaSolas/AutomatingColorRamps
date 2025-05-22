@@ -28,17 +28,10 @@ class RampWindow(QWidget):
         )
         layout.addWidget(self.graph_viewer, 0, 1)
 
-        # Bottom-Left: Placeholder for palette
-        self.ramp_display = QLabel("Palette View (coming soon)")
-        self.ramp_display.setStyleSheet("background-color: #f9f9f9; border: 1px solid #888;")
-        self.ramp_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.ramp_display.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(self.ramp_display, 1, 0)
-
-        # Bottom-Right: Ramp Extraction
+        # Bottom: Ramp Extraction
         self.ramp_extraction_widget = RampExtractionViewer(self.graph_viewer)
         self.graph_viewer.graph_updated.connect(self.ramp_extraction_widget.update_extract_button_state)
-        layout.addWidget(self.ramp_extraction_widget, 1, 1)
+        layout.addWidget(self.ramp_extraction_widget, 1, 0, 1, 2)
 
         # Ensure all grid cells are equal
         layout.setRowStretch(0, 1)
