@@ -33,10 +33,6 @@ def extract_adjacent_color_pairs(image_array, use_8_neighbors=True):
 
     return adjacency_counts, color_counts
 
-def color_to_hsv(c):
-    r, g, b = [x / 255.0 for x in c[:3]]
-    return colorsys.rgb_to_hsv(r, g, b)
-
 def get_highlight_color(color):
     r, g, b = [c / 255.0 for c in color[:3]]
     h, _, _ = colorsys.rgb_to_hsv(r, g, b)
@@ -53,6 +49,10 @@ def get_text_descriptions(color):
         "hsv": f"HSV: ({h_deg}°, {s_pct}%, {v_pct}%)",
         "hex_raw": hex_str
     }
+
+def color_to_hsv(c):
+    r, g, b = [x / 255.0 for x in c[:3]]
+    return colorsys.rgb_to_hsv(r, g, b)
 
 def is_similar_hsv(c1, c2, hue_threshold=180, sat_threshold=1.0, val_threshold=1.0):
     hsv1 = np.array(color_to_hsv(c1))
