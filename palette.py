@@ -1,3 +1,4 @@
+from PyQt6.QtGui import QEnterEvent
 from PyQt6.QtWidgets import QLabel, QWidget, QHBoxLayout
 from PyQt6.QtCore import Qt
 
@@ -78,14 +79,35 @@ class ColorPalette(QWidget):
 class ColorRamp(QWidget):
     def __init__(self, color_ramp, swatch_size=25, parent=None):
         super().__init__(parent)
+        self.setObjectName("ColorRampRow")
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+        self.setStyleSheet("""
+            border: none;
+            background-color: transparent;
+        """)
+
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(0)
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         for color in color_ramp:
             swatch = ColorLabel(color, show_border=False, size=swatch_size)
-            self.layout().addWidget(swatch)
+            layout.addWidget(swatch)
+
+    def enterEvent(self, event: QEnterEvent):
+        self.setStyleSheet("""
+            border: 3px solid #ffff00;
+            background-color: #ffffaa;
+        """)
+
+    def leaveEvent(self, event):
+        self.setStyleSheet("""
+            border: none;
+            background-color: transparent;
+        """)
 
     def deleteLater(self):
         for i in range(self.layout().count()):

@@ -113,7 +113,7 @@ class RampExtractionViewer(QWidget):
         self.ramps_scroll_area.setWidgetResizable(True)
         self.ramp_container = QWidget()
         self.ramps_layout = QVBoxLayout(self.ramp_container)
-        self.ramps_layout.setSpacing(5)
+        self.ramps_layout.setSpacing(1)
         self.ramps_layout.setContentsMargins(10, 10, 10, 10)
         self.ramps_scroll_area.setWidget(self.ramp_container)
 
