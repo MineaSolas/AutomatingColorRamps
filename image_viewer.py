@@ -11,10 +11,11 @@ from palette import ColorPalette, selection_manager
 
 
 class ImageViewer(QWidget):
-    def __init__(self, show_load_button=True, palette_square_size=40):
+    def __init__(self, show_load_button=True, palette_square_size=40, show_color_details=True):
         super().__init__()
         self.original_pixmap = None
         self.palette_square_size = palette_square_size
+        self.show_color_details = show_color_details
 
         self._setup_ui(show_load_button)
         selection_manager.register_listener(self.on_selection_change)
@@ -172,8 +173,9 @@ class ImageViewer(QWidget):
     def on_selection_change(self, selected_color, hovered_color):
         target_color = hovered_color or selected_color
         if target_color:
-            self.update_overlay_text(target_color)
-            self.colorDetails.show()
+            if self.show_color_details:
+                self.update_overlay_text(target_color)
+                self.colorDetails.show()
             self.update_image_highlight(target_color)
         else:
             self.update_image()
