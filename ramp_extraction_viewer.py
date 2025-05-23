@@ -10,7 +10,7 @@ from pyciede2000 import ciede2000
 from sklearn.cluster import AgglomerativeClustering
 
 from color_utils import color_to_hsv, hsv_diffs, is_similar_hsv
-from palette import ColorRamp, final_palette_manager, ColorPalette
+from palette import ColorRamp, final_palette_manager, ColorPalette, selection_manager
 from ui_helpers import VerticalLabel
 
 class RampExtractionViewer(QWidget):
@@ -22,6 +22,7 @@ class RampExtractionViewer(QWidget):
         self.unique_colors = set(unique_colors)
         self._setup_ui()
         final_palette_manager.register_listener(self.refresh_ramp_views)
+        selection_manager.register_listener(self.update_tool_color_display)
 
     def _setup_ui(self):
         # Main layout
@@ -154,6 +155,15 @@ class RampExtractionViewer(QWidget):
         self.final_ramp_preview_layout.addWidget(self.final_ramps_overlay)
 
         # Floating tool button panel
+        self.tool_color_preview = QLabel("No color")
+        self.tool_color_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.tool_color_preview.setFixedHeight(30)
+        self.tool_color_preview.setStyleSheet("""
+            border: 1px solid #888;
+            background-color: transparent;
+            font-size: 10pt;
+        """)
+
         self.tool_button_panel = QFrame(self.final_ramps_overlay)
         self.tool_button_panel.setStyleSheet("""
             QToolButton {
@@ -186,6 +196,7 @@ class RampExtractionViewer(QWidget):
         self.tool_group.addButton(self.split_tool)
         self.tool_group.addButton(self.merge_tool)
 
+        tool_layout.addWidget(self.tool_color_preview)
         tool_layout.addWidget(self.add_remove_tool)
         # tool_layout.addWidget(self.split_tool)
         # tool_layout.addWidget(self.merge_tool)
@@ -445,13 +456,19 @@ class RampExtractionViewer(QWidget):
         old_key = tuple(old_ramp)
         new_key = tuple(new_ramp)
 
-        if old_key == new_key:
-            return  # No change
+        # Empty ramp, remove it
+        if not new_ramp:
+            final_palette_manager.remove_ramp(old_ramp)
+            return
 
-        # Update ramp content and refresh outside of widget context
+        # Duplicate of existing ramp, remove it
+        if new_ramp != old_ramp and new_ramp in final_palette_manager.get_ramps():
+            final_palette_manager.remove_ramp(old_ramp)
+            return
+
         final_palette_manager.update_ramp(old_ramp, new_ramp)
 
-        # Update widget mapping if key changes
+        # Update the widget reference if needed
         if old_key in self.final_ramp_widgets:
             widget = self.final_ramp_widgets.pop(old_key)
             self.final_ramp_widgets[new_key] = widget
@@ -940,6 +957,22 @@ class RampExtractionViewer(QWidget):
                 return btn.text().lower().replace("/", "_")  # e.g., "add_remove"
         return None
 
+    def update_tool_color_display(self, selected_color, hovered_color):
+        if selected_color:
+            rgba = f"rgba({selected_color[0]},{selected_color[1]},{selected_color[2]},{selected_color[3]})"
+            self.tool_color_preview.setText("")
+            self.tool_color_preview.setStyleSheet(f"""
+                border: 1px solid #888;
+                background-color: {rgba};
+            """)
+        else:
+            self.tool_color_preview.setText("No color")
+            self.tool_color_preview.setStyleSheet("""
+                border: 1px solid #888;
+                background-color: transparent;
+                font-size: 10pt;
+            """)
+
     def cleanup(self):
         try:
             self.clear_layout(self.ramps_layout)
@@ -948,5 +981,6 @@ class RampExtractionViewer(QWidget):
             self.final_ramp_widgets.clear()
             self.unused_palette.clear()
             final_palette_manager.unregister_listener(self.refresh_ramp_views)
+            selection_manager.unregister_listener(self.update_tool_color_display)
         except:
             pass
