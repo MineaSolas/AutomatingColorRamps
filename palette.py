@@ -237,7 +237,6 @@ class ColorRamp(QWidget):
             if self.source == "final" and self.viewer and self.viewer.tool_active("add_remove"):
                 x = event.position().x()
                 index = int((x - self.layout().contentsMargins().left()) / self.swatch_size)
-                print(index)
                 if 0 <= index < len(self.color_ramp):
                     new_ramp = self.color_ramp[:index] + self.color_ramp[index + 1:]
                     self.viewer.request_ramp_update(self.color_ramp, new_ramp)
