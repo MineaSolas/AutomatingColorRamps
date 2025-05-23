@@ -457,7 +457,7 @@ class RampExtractionViewer(QWidget):
         # Add new ones
         for key in to_add:
             ramp = list(key)
-            widget = ColorRamp(ramp, source="final")
+            widget = ColorRamp(ramp, source="final", viewer=self)
             self.final_ramp_widgets[key] = widget
             self.final_ramps_layout.addWidget(widget)
 
@@ -909,6 +909,13 @@ class RampExtractionViewer(QWidget):
         parent_window = self.window()
         if hasattr(parent_window, 'progress_overlay'):
             parent_window.progress_overlay.finish()
+
+    def tool_active(self, name):
+        return {
+            "add_remove": self.add_remove_tool.isChecked(),
+            "split": self.split_tool.isChecked(),
+            "merge": self.merge_tool.isChecked()
+        }.get(name, False)
 
     def cleanup(self):
         try:

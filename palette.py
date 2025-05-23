@@ -1,5 +1,6 @@
+from PyQt6.QtGui import QPainter, QPen
 from PyQt6.QtWidgets import QLabel, QWidget, QHBoxLayout
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QEvent
 
 from ui_helpers import FlowLayout
 from color_utils import get_highlight_color
@@ -77,15 +78,18 @@ class ColorPalette(QWidget):
         self.labels.clear()
 
 class ColorRamp(QWidget):
-    def __init__(self, color_ramp, swatch_size=25, source="generated", parent=None):
+    def __init__(self, color_ramp, swatch_size=25, source="generated", parent=None, viewer=None):
         super().__init__(parent)
         self.color_ramp = color_ramp
         self.swatch_size = swatch_size
         self.source = source  # "generated" or "final"
+        self.viewer = viewer
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setMouseTracking(True)
         self.duplicated = False
         self.hovered = False
+        self.hover_index = None
         self.init_ui()
         self.setFixedHeight(swatch_size + 16)
 
@@ -96,8 +100,27 @@ class ColorRamp(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         for color in self.color_ramp:
             label = ColorLabel(color, show_border=False, size=self.swatch_size)
+            label.setMouseTracking(True)
+            label.installEventFilter(self)
             layout.addWidget(label)
         self.update_highlight()
+
+    def eventFilter(self, obj, event):
+        if not self.viewer or not self.viewer.tool_active("add_remove"):
+            return super().eventFilter(obj, event)
+
+        if event.type() == QEvent.Type.MouseMove:
+            local_x = self.mapFromGlobal(event.globalPosition().toPoint()).x()
+            self.hover_index = self._compute_insertion_index(local_x)
+            self.update()
+            return False
+
+        if event.type() == QEvent.Type.Leave:
+            self.hover_index = None
+            self.update()
+            return False
+
+        return super().eventFilter(obj, event)
 
     def update_highlight(self):
         if self.hovered:
@@ -114,10 +137,54 @@ class ColorRamp(QWidget):
     def enterEvent(self, event):
         self.hovered = True
         self.update_highlight()
+        self.update()
 
     def leaveEvent(self, event):
         self.hovered = False
+        self.hover_index = None
         self.update_highlight()
+        self.update()
+
+    def mouseMoveEvent(self, event):
+        if self.source != "final":
+            return
+
+        if not self.viewer or not self.viewer.tool_active("add_remove"):
+            return
+        
+        pos_x = event.position().x()
+        index = self._compute_insertion_index(pos_x)
+        if index != self.hover_index:
+            self.hover_index = index
+            self.update()
+
+    def _compute_insertion_index(self, x_pos):
+        total = self.layout().count()
+        swatch_width = self.swatch_size
+        margins = self.layout().contentsMargins().left()
+
+        for i in range(total):
+            left_edge = margins + i * swatch_width
+            right_edge = left_edge + swatch_width
+            if x_pos < (left_edge + right_edge) / 2:
+                return i
+        return total
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self.hovered or self.hover_index is None:
+            return
+
+        if not self.viewer or not self.viewer.tool_active("add_remove"):
+            return
+
+        painter = QPainter(self)
+        pen = QPen(Qt.GlobalColor.blue)
+        pen.setWidth(2)
+        painter.setPen(pen)
+
+        x = self.layout().contentsMargins().left() + self.hover_index * self.swatch_size
+        painter.drawLine(x, 0, x, self.height())
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
