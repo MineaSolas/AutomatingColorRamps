@@ -37,11 +37,14 @@ class ColorPicker(QWidget):
         self.ui.setupUi(self)
 
         # Connect update functions
-        self.ui.hue.mouseMoveEvent = self.moveHueSelector
-        self.ui.hue.mousePressEvent = self.moveHueSelector
+        self.ui.hue_slider.mouseMoveEvent = self.moveHueSelector
+        self.ui.hue_slider.mousePressEvent = self.moveHueSelector
         self.ui.red.textEdited.connect(self.rgbChanged)
         self.ui.green.textEdited.connect(self.rgbChanged)
         self.ui.blue.textEdited.connect(self.rgbChanged)
+        self.ui.hue.textEdited.connect(self.manualHSVChanged)
+        self.ui.saturation.textEdited.connect(self.manualHSVChanged)
+        self.ui.value.textEdited.connect(self.manualHSVChanged)
         self.ui.hex.textEdited.connect(self.hexChanged)
 
         # Connect selector moving function
@@ -74,8 +77,13 @@ class ColorPicker(QWidget):
 
 
     ## Update Functions ##
-    def hsvChanged(self):
-        h,s,v = (100 - self.ui.hue_selector.y() / 1.85, (self.ui.selector.x() + 6) / 2.0, (194 - self.ui.selector.y()) / 2.0)
+    def hsvChanged(self, update_hue=True):
+        if update_hue:
+            h = 100 - self.ui.hue_selector.y() / 1.85
+        else:
+            h = self.color[0]
+
+        s,v = ((self.ui.selector.x() + 6) / 2.0, (194 - self.ui.selector.y()) / 2.0)
         r,g,b = self.hsv2rgb(h,s,v)
         self.color = (h,s,v)
         self._setRGB((r,g,b))
@@ -83,6 +91,19 @@ class ColorPicker(QWidget):
         self.ui.color_vis.setStyleSheet(f"background-color: rgb({r},{g},{b})")
         self.ui.color_view.setStyleSheet(f"border-radius: 5px;background-color: qlineargradient(x1:1, x2:0, stop:0 hsl({h}%,100%,50%), stop:1 #fff);")
         self.colorChanged.emit()
+
+    def manualHSVChanged(self):
+        h = self.i(self.ui.hue.text())
+        s = self.i(self.ui.saturation.text())
+        v = self.i(self.ui.value.text())
+
+        # Clamp values to valid HSV ranges
+        h = max(0, min(h, 100))
+        s = max(0, min(s, 100))
+        v = max(0, min(v, 100))
+
+        self.color = (h, s, v)
+        self.hsvChanged()
 
     def rgbChanged(self):
         r,g,b = self.i(self.ui.red.text()), self.i(self.ui.green.text()), self.i(self.ui.blue.text())
@@ -110,9 +131,13 @@ class ColorPicker(QWidget):
         self.ui.blue.setText(str(self.i(b)))
 
     def _setHSV(self, c):
-        self.ui.hue_selector.move(7, int((100 - c[0]) * 1.85))
+        h, s, v = c
+        self.ui.hue.setText(str(int(h)))
+        self.ui.saturation.setText(str(int(s)))
+        self.ui.value.setText(str(int(v)))
+        self.ui.hue_selector.move(0, int((100 - h) * 1.85))  # Or your logic
         self.ui.color_view.setStyleSheet(f"border-radius: 5px;background-color: qlineargradient(x1:1, x2:0, stop:0 hsl({c[0]}%,100%,50%), stop:1 #fff);")
-        self.ui.selector.move(int(c[1] * 2 - 6), int((200 - c[2] * 2) - 6))
+        self.ui.selector.move(int(s * 2 - 6), int((200 - v * 2) - 6))
 
     def _setHex(self, c):
         self.ui.hex.setText(c)
@@ -169,20 +194,21 @@ class ColorPicker(QWidget):
     # selector move function
     def moveSVSelector(self, event):
         if event.buttons() == Qt.MouseButton.LeftButton:
-            pos = event.position()
-            if pos.x() < 0: pos.setX(0)
-            if pos.y() < 0: pos.setY(0)
-            if pos.x() > 200: pos.setX(200)
-            if pos.y() > 200: pos.setY(200)
-            self.ui.selector.move(int(pos.x() - 6), int(pos.y() - 6))
-            self.hsvChanged()
+            print(self.ui.black_overlay.width())
+            width = self.ui.black_overlay.width()
+            height = self.ui.black_overlay.height()
+            x = min(max(0, event.position().x()), width)
+            y = min(max(0, event.position().y()), height)
+            self.ui.selector.move(int(x) - 6, int(y) - 6)
+            self.hsvChanged(update_hue=False)
 
     def moveHueSelector(self, event):
         if event.buttons() == Qt.MouseButton.LeftButton:
-            pos = event.position().y() - 7
-            if pos < 0: pos = 0
-            if pos > 185: pos = 185
-            self.ui.hue_selector.move(QPoint(7, int(pos)))
+            pos = int(event.position().y())
+            max_y = self.ui.hue_slider.height() - self.ui.hue_selector.height()
+            pos = max(0, min(pos, max_y))
+            x = (self.ui.hue_slider.width() - self.ui.hue_selector.width()) // 2
+            self.ui.hue_selector.move(x, pos)
             self.hsvChanged()
 
     def i(self, text):

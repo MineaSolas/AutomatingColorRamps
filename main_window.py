@@ -36,7 +36,6 @@ class MainWindow(QMainWindow):
 
         # Color Picker Widget
         self.color_picker = ColorPicker()
-        self.color_picker.setFixedHeight(240)
         self.color_picker.colorChanged.connect(self._on_picker_color_changed)
         left_layout.addWidget(self.color_picker)
 
