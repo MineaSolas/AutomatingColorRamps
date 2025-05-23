@@ -65,6 +65,13 @@ class FinalPaletteManager:
         self._ramps = [r for r in self._ramps if r != ramp]
         self._notify()
 
+    def update_ramp(self, old_ramp, new_ramp):
+        for i, r in enumerate(self._ramps):
+            if r == old_ramp:
+                self._ramps[i] = new_ramp
+                self._notify()
+                return
+
     def get_ramps(self):
         return list(self._ramps)
 

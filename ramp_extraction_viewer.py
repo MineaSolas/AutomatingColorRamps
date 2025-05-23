@@ -187,8 +187,8 @@ class RampExtractionViewer(QWidget):
         self.tool_group.addButton(self.merge_tool)
 
         tool_layout.addWidget(self.add_remove_tool)
-        tool_layout.addWidget(self.split_tool)
-        tool_layout.addWidget(self.merge_tool)
+        # tool_layout.addWidget(self.split_tool)
+        # tool_layout.addWidget(self.merge_tool)
 
         self.add_remove_tool.clicked.connect(self._handle_tool_toggle)
         self.split_tool.clicked.connect(self._handle_tool_toggle)
@@ -441,36 +441,50 @@ class RampExtractionViewer(QWidget):
         self.update_duplicates()
         self.finish_progress()
 
+    def request_ramp_update(self, old_ramp, new_ramp):
+        old_key = tuple(old_ramp)
+        new_key = tuple(new_ramp)
+
+        if old_key == new_key:
+            return  # No change
+
+        # Update ramp content and refresh outside of widget context
+        final_palette_manager.update_ramp(old_ramp, new_ramp)
+
+        # Update widget mapping if key changes
+        if old_key in self.final_ramp_widgets:
+            widget = self.final_ramp_widgets.pop(old_key)
+            self.final_ramp_widgets[new_key] = widget
+            widget.color_ramp = new_ramp
+
     def refresh_ramp_views(self):
-        current = set(tuple(r) for r in final_palette_manager.get_ramps())
-        existing = set(self.final_ramp_widgets.keys())
+        current_ramps = final_palette_manager.get_ramps()
+        current_keys = [tuple(r) for r in current_ramps]
 
-        to_add = current - existing
-        to_remove = existing - current
+        # Remove obsolete widgets
+        for key in list(self.final_ramp_widgets.keys()):
+            if key not in current_keys:
+                widget = self.final_ramp_widgets.pop(key)
+                self.final_ramps_layout.removeWidget(widget)
+                widget.deleteLater()
 
-        # Remove old widgets
-        for key in to_remove:
-            widget = self.final_ramp_widgets.pop(key)
-            self.final_ramps_layout.removeWidget(widget)
-            widget.deleteLater()
+        # Reorder and insert widgets based on current manager list
+        for i, ramp in enumerate(current_ramps):
+            key = tuple(ramp)
+            if key in self.final_ramp_widgets:
+                widget = self.final_ramp_widgets[key]
+            else:
+                widget = ColorRamp(ramp, source="final", viewer=self)
+                self.final_ramp_widgets[key] = widget
 
-        # Add new ones
-        for key in to_add:
-            ramp = list(key)
-            widget = ColorRamp(ramp, source="final", viewer=self)
-            self.final_ramp_widgets[key] = widget
-            self.final_ramps_layout.addWidget(widget)
+            self.final_ramps_layout.insertWidget(i, widget)
 
         self.update_duplicates()
 
-        used_colors = {c for ramp in final_palette_manager.get_ramps() for c in ramp}
+        used_colors = {c for ramp in current_ramps for c in ramp}
         unused_colors = sorted(self.unique_colors - used_colors, key=lambda c: (c[3], c[0], c[1], c[2]))
 
-        if unused_colors:
-            self.unused_label.setText("Unused Colors:")
-        else:
-            self.unused_label.setText("Unused Colors: None")
-
+        self.unused_label.setText("Unused Colors:" if unused_colors else "Unused Colors: None")
         self.unused_palette.populate(unused_colors, square_size=25)
 
     def update_duplicates(self):
@@ -916,6 +930,15 @@ class RampExtractionViewer(QWidget):
             "split": self.split_tool.isChecked(),
             "merge": self.merge_tool.isChecked()
         }.get(name, False)
+
+    def tool_active_any(self):
+        return any(btn.isChecked() for btn in self.tool_group.buttons())
+
+    def tool_active_name(self):
+        for btn in self.tool_group.buttons():
+            if btn.isChecked():
+                return btn.text().lower().replace("/", "_")  # e.g., "add_remove"
+        return None
 
     def cleanup(self):
         try:

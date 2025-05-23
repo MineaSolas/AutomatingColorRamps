@@ -1,6 +1,6 @@
 from PyQt6.QtGui import QPainter, QPen
 from PyQt6.QtWidgets import QLabel, QWidget, QHBoxLayout
-from PyQt6.QtCore import Qt, QEvent
+from PyQt6.QtCore import Qt, QEvent, QTimer
 
 from ui_helpers import FlowLayout
 from color_utils import get_highlight_color
@@ -14,6 +14,7 @@ class ColorLabel(QLabel):
         super().__init__(parent)
         self.color = color
         self.show_border = show_border
+        self.tool_hovered = False
         self.setFixedSize(size, size)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update_border()
@@ -22,18 +23,44 @@ class ColorLabel(QLabel):
         selection_manager.register_listener(self.on_selection_change)
 
     def mousePressEvent(self, event):
+        ramp = self.parent()
+        if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer.tool_active_any():
+            event.ignore()
+            return
         selection_manager.select_color(self.color)
 
     def enterEvent(self, event):
+        ramp = self.parent()
+        if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer"):
+            if ramp.viewer.tool_active("add_remove") or ramp.viewer.tool_active("split"):
+                self.tool_hovered = True
         selection_manager.hover_color(self.color)
 
     def leaveEvent(self, event):
+        ramp = self.parent()
+        if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer"):
+            if ramp.viewer.tool_active("add_remove") or ramp.viewer.tool_active("split"):
+                self.tool_hovered = False
         selection_manager.clear_hover()
 
     def on_selection_change(self, selected_color, hovered_color):
         self.update_border()
 
     def update_border(self):
+        ramp = self.parent()
+        tool_active = getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer.tool_active_any()
+
+        if tool_active:
+            tool = ramp.viewer.tool_active_name()
+            if self.tool_hovered and tool in ("add_remove", "split"):
+                self.setStyleSheet(f"border: 3px solid #ff00ff;")
+                self.set_background_color()
+            else:
+                border_style = "1px solid #000;" if self.show_border else "none;"
+                self.setStyleSheet(f"border: {border_style}")
+                self.set_background_color()
+            return
+
         is_selected = selection_manager.selected_color == self.color
         is_hovered = selection_manager.hovered_color == self.color
 
@@ -91,11 +118,11 @@ class ColorRamp(QWidget):
         self.hovered = False
         self.hover_index = None
         self.init_ui()
-        self.setFixedHeight(swatch_size + 16)
+        self.setFixedHeight(swatch_size + 24)
 
     def init_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(8, 12, 8, 12)
         layout.setSpacing(0)
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         for color in self.color_ramp:
@@ -151,7 +178,7 @@ class ColorRamp(QWidget):
 
         if not self.viewer or not self.viewer.tool_active("add_remove"):
             return
-        
+
         pos_x = event.position().x()
         index = self._compute_insertion_index(pos_x)
         if index != self.hover_index:
@@ -175,11 +202,11 @@ class ColorRamp(QWidget):
         if not self.hovered or self.hover_index is None:
             return
 
-        if not self.viewer or not self.viewer.tool_active("add_remove"):
+        if not self.viewer or not self.viewer.tool_active("add_remove") and not self.viewer.tool_active("split"):
             return
 
         painter = QPainter(self)
-        pen = QPen(Qt.GlobalColor.blue)
+        pen = QPen(Qt.GlobalColor.green)
         pen.setWidth(2)
         painter.setPen(pen)
 
@@ -190,8 +217,44 @@ class ColorRamp(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             if self.source == "generated":
                 final_palette_manager.add_ramp(self.color_ramp)
-            elif self.source == "final" and event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                final_palette_manager.remove_ramp(self.color_ramp)
+
+            elif self.source == "final":
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    final_palette_manager.remove_ramp(self.color_ramp)
+                elif self.viewer and self.viewer.tool_active("add_remove"):
+                    color = selection_manager.selected_color
+                    if not color or self.hover_index is None:
+                        return
+                    new_ramp = (
+                            self.color_ramp[:self.hover_index]
+                            + [color]
+                            + self.color_ramp[self.hover_index:]
+                    )
+                    self.viewer.request_ramp_update(self.color_ramp, new_ramp)
+
+
+        elif event.button() == Qt.MouseButton.RightButton:
+            if self.source == "final" and self.viewer and self.viewer.tool_active("add_remove"):
+                x = event.position().x()
+                index = int((x - self.layout().contentsMargins().left()) / self.swatch_size)
+                print(index)
+                if 0 <= index < len(self.color_ramp):
+                    new_ramp = self.color_ramp[:index] + self.color_ramp[index + 1:]
+                    self.viewer.request_ramp_update(self.color_ramp, new_ramp)
+
+
+    def update_self(self, new_ramp):
+        old_key = tuple(self.color_ramp)
+        new_key = tuple(new_ramp)
+
+        def apply_update():
+            final_palette_manager.update_ramp(self.color_ramp, new_ramp)
+            if self.viewer:
+                self.viewer.final_ramp_widgets.pop(old_key, None)
+                self.viewer.final_ramp_widgets[new_key] = self
+            self.color_ramp = new_ramp
+
+        QTimer.singleShot(0, apply_update)
 
     def deleteLater(self):
         for i in range(self.layout().count()):
