@@ -1,9 +1,9 @@
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider, QPushButton,
-    QScrollArea, QSizePolicy, QCheckBox, QGroupBox, QGridLayout, QDialog, QSpacerItem
+    QScrollArea, QSizePolicy, QCheckBox, QGroupBox, QGridLayout, QDialog, QSpacerItem, QFrame, QToolButton, QButtonGroup
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from colormath.color_conversions import convert_color
 from colormath.color_objects import sRGBColor, LabColor
 from pyciede2000 import ciede2000
@@ -110,7 +110,7 @@ class RampExtractionViewer(QWidget):
 
         main_layout.addWidget(left_controls_container, stretch=0)
 
-        # --- CENTER: Ramp Preview ---
+        # --- CENTER: Candidate Ramps ---
         self.ramp_label = QLabel("Candidate Ramps")
         self.generated_ramps = []
         self.ramps_scroll_area = QScrollArea()
@@ -126,10 +126,12 @@ class RampExtractionViewer(QWidget):
         self.ramp_preview_layout.setContentsMargins(0, 0, 0, 0)
         self.ramp_preview_layout.addWidget(self.ramp_label)
         self.ramp_preview_layout.addWidget(self.ramps_scroll_area)
+
         main_layout.addWidget(self.ramp_preview_container, stretch=2)
 
-        # --- RIGHT: Final Ramp Placeholder ---
+        # --- RIGHT: Final Ramps + Tools ---
         self.selected_label = QLabel("Selected Ramps")
+
         self.final_ramps_scroll_area = QScrollArea()
         self.final_ramps_scroll_area.setWidgetResizable(True)
         self.final_ramp_container = QWidget()
@@ -138,22 +140,103 @@ class RampExtractionViewer(QWidget):
         self.final_ramps_layout.setContentsMargins(10, 10, 10, 10)
         self.final_ramps_scroll_area.setWidget(self.final_ramp_container)
 
+        # Overlay container
+        self.final_ramps_overlay = QWidget()
+        self.final_ramps_overlay.setLayout(QVBoxLayout())
+        self.final_ramps_overlay.layout().setContentsMargins(0, 0, 0, 0)
+        self.final_ramps_overlay.layout().addWidget(self.final_ramps_scroll_area)
+
+        # Final section layout
         self.final_ramp_preview_container = QWidget()
         self.final_ramp_preview_layout = QVBoxLayout(self.final_ramp_preview_container)
         self.final_ramp_preview_layout.setContentsMargins(0, 0, 0, 0)
         self.final_ramp_preview_layout.addWidget(self.selected_label)
-        self.final_ramp_preview_layout.addWidget(self.final_ramps_scroll_area)
+        self.final_ramp_preview_layout.addWidget(self.final_ramps_overlay)
 
+        # Floating tool button panel
+        self.tool_button_panel = QFrame(self.final_ramps_overlay)
+        self.tool_button_panel.setStyleSheet("""
+            QToolButton {
+                min-width: 80px;
+                min-height: 20px;
+                padding: 4px 4px;
+                background-color: #eeeeff;
+            }
+        """)
+        self.tool_button_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+        tool_layout = QVBoxLayout(self.tool_button_panel)
+        tool_layout.setSpacing(10)
+
+        self.add_remove_tool = QToolButton()
+        self.add_remove_tool.setText("Add/Remove")
+        self.add_remove_tool.setCheckable(True)
+
+        self.split_tool = QToolButton()
+        self.split_tool.setText("Split")
+        self.split_tool.setCheckable(True)
+
+        self.merge_tool = QToolButton()
+        self.merge_tool.setText("Merge")
+        self.merge_tool.setCheckable(True)
+
+        self.tool_group = QButtonGroup(self)
+        self.tool_group.setExclusive(False)
+        self.tool_group.addButton(self.add_remove_tool)
+        self.tool_group.addButton(self.split_tool)
+        self.tool_group.addButton(self.merge_tool)
+
+        tool_layout.addWidget(self.add_remove_tool)
+        tool_layout.addWidget(self.split_tool)
+        tool_layout.addWidget(self.merge_tool)
+
+        self.add_remove_tool.clicked.connect(self._handle_tool_toggle)
+        self.split_tool.clicked.connect(self._handle_tool_toggle)
+        self.merge_tool.clicked.connect(self._handle_tool_toggle)
+
+        # Unused color palette
+        self.unused_label = QLabel("Unused Colors:")
         self.unused_palette = ColorPalette()
         self.unused_palette.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.unused_label = QLabel("Unused Colors:")
         self.final_ramp_preview_layout.addWidget(self.unused_label)
         self.final_ramp_preview_layout.addWidget(self.unused_palette)
 
         main_layout.addWidget(self.final_ramp_preview_container, stretch=2)
 
+        # Initial logic
         self.update_extraction_controls()
         self.refresh_ramp_views()
+
+        # Ensure floating tools appear
+        self.tool_button_panel.raise_()
+        self.tool_button_panel.show()
+        QTimer.singleShot(0, self._move_tool_button_panel)
+
+    def _handle_tool_toggle(self):
+        clicked = self.sender()
+
+        # If clicked is already checked, toggle off everything
+        if clicked.isChecked():
+            # Uncheck all other buttons
+            for button in self.tool_group.buttons():
+                if button != clicked:
+                    button.setChecked(False)
+        else:
+            # If clicked is being toggled off, nothing else is selected
+            for button in self.tool_group.buttons():
+                button.setChecked(False)
+
+    def _move_tool_button_panel(self):
+        self.tool_button_panel.adjustSize()
+        available_width = self.final_ramps_overlay.size().width()
+        panel_width = self.tool_button_panel.sizeHint().width()
+        x = max(available_width - panel_width - 5, 0)
+        self.tool_button_panel.move(x, 5)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.tool_button_panel:
+            self._move_tool_button_panel()
 
     def _create_basic_hsv_controls(self):
         self.h_slider = None
