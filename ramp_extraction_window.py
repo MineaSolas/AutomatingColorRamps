@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QWidget, QGridLayout, QLabel, QSizePolicy, QVBoxLayout, QPushButton, QHBoxLayout, QComboBox, QSlider, QScrollArea
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from graph_viewer import GraphViewer
 from image_viewer import ImageViewer
 from ramp_extraction_viewer import RampExtractionViewer
@@ -7,6 +7,8 @@ from ui_helpers import ProgressOverlay
 
 
 class RampWindow(QWidget):
+    ramps_saved = pyqtSignal()
+
     def __init__(self, loaded_pixmap):
         super().__init__()
         self.setWindowTitle("Color Ramp Extraction")
@@ -41,6 +43,12 @@ class RampWindow(QWidget):
         layout.setColumnStretch(1, 1)
 
         self.progress_overlay = ProgressOverlay(self)
+
+        self.ramp_extraction_widget.save_ramps.connect(self._handle_ramps_saved)
+
+    def _handle_ramps_saved(self):
+        self.ramps_saved.emit()
+        self.close()
 
     def closeEvent(self, event):
         self.mini_viewer.cleanup()

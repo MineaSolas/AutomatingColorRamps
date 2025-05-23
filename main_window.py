@@ -57,7 +57,6 @@ class MainWindow(QMainWindow):
 
         # Listen for color changes
         selection_manager.register_listener(self.update_color_details)
-        final_palette_manager.register_listener(self.refresh_ramps)
 
     def _create_color_details_widget(self):
         widget = QWidget()
@@ -102,7 +101,7 @@ class MainWindow(QMainWindow):
         for i in reversed(range(self.ramp_layout.count())):
             widget = self.ramp_layout.itemAt(i).widget()
             if widget:
-                widget.setParent(None)
+                widget.deleteLater()
 
         for ramp in final_palette_manager.get_ramps():
             ramp_widget = ColorRamp(ramp, source="final")
@@ -112,4 +111,6 @@ class MainWindow(QMainWindow):
         if not self.viewer.original_pixmap:
             return
         self.ramp_window = RampWindow(self.viewer.original_pixmap)
+        self.ramp_window.ramps_saved.connect(self.refresh_ramps)
         self.ramp_window.show()
+

@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider, QPushButton,
     QScrollArea, QSizePolicy, QCheckBox, QGroupBox, QGridLayout, QDialog, QSpacerItem, QFrame, QToolButton, QButtonGroup
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from colormath.color_conversions import convert_color
 from colormath.color_objects import sRGBColor, LabColor
 from pyciede2000 import ciede2000
@@ -14,6 +14,11 @@ from palette import ColorRamp, final_palette_manager, ColorPalette, selection_ma
 from ui_helpers import VerticalLabel
 
 class RampExtractionViewer(QWidget):
+    save_ramps = pyqtSignal()
+
+    def _emit_save_signal(self):
+        self.save_ramps.emit()
+
     def __init__(self, graph_viewer, unique_colors, parent=None):
         super().__init__(parent)
         self.graph_viewer = graph_viewer
@@ -211,6 +216,10 @@ class RampExtractionViewer(QWidget):
         self.unused_palette.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.final_ramp_preview_layout.addWidget(self.unused_label)
         self.final_ramp_preview_layout.addWidget(self.unused_palette)
+
+        self.save_button = QPushButton("Save and Close")
+        self.save_button.clicked.connect(self._emit_save_signal)
+        self.final_ramp_preview_layout.addWidget(self.save_button)
 
         main_layout.addWidget(self.final_ramp_preview_container, stretch=2)
 

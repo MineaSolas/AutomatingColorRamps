@@ -24,21 +24,21 @@ class ColorLabel(QLabel):
 
     def mousePressEvent(self, event):
         ramp = self.parent()
-        if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer.tool_active_any():
+        if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer and ramp.viewer.tool_active_any():
             event.ignore()
             return
         selection_manager.select_color(self.color)
 
     def enterEvent(self, event):
         ramp = self.parent()
-        if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer"):
+        if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer:
             if ramp.viewer.tool_active("add_remove") or ramp.viewer.tool_active("split"):
                 self.tool_hovered = True
         selection_manager.hover_color(self.color)
 
     def leaveEvent(self, event):
         ramp = self.parent()
-        if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer"):
+        if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer:
             if ramp.viewer.tool_active("add_remove") or ramp.viewer.tool_active("split"):
                 self.tool_hovered = False
         selection_manager.clear_hover()
@@ -48,7 +48,7 @@ class ColorLabel(QLabel):
 
     def update_border(self):
         ramp = self.parent()
-        tool_active = getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer.tool_active_any()
+        tool_active = getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer and ramp.viewer.tool_active_any()
 
         if tool_active:
             tool = ramp.viewer.tool_active_name()
