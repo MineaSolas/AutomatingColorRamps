@@ -30,14 +30,11 @@ class MainWindow(QMainWindow):
         left_layout.setContentsMargins(8, 8, 8, 8)
         left_layout.setSpacing(10)
 
-        # Color Details Widget
-        self.color_details = self._create_color_details_widget()
-        left_layout.addWidget(self.color_details)
-
         # Color Picker Widget
         self.color_picker = ColorPicker()
         self.color_picker.colorChanged.connect(self._on_picker_color_changed)
         left_layout.addWidget(self.color_picker)
+        self.color_picker.hide()
 
         # Selected Ramps Viewer
         self.ramp_scroll = QScrollArea()
@@ -66,55 +63,32 @@ class MainWindow(QMainWindow):
         # Listen for color changes
         selection_manager.register_listener(self.update_color_details)
 
-    def _create_color_details_widget(self):
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        # Color Swatch
-        self.swatch = QLabel()
-        self.swatch.setFixedSize(100, 70)
-        self.swatch.setStyleSheet("background-color: #fff; border: 1px solid #000;")
-        layout.addWidget(self.swatch)
-
-        # Text Details Stack
-        text_layout = QVBoxLayout()
-        self.rgb_label = QLabel("RGB:  -")
-        self.hex_label = QLabel("HEX:  -")
-        self.hsv_label = QLabel("HSV:  -")
-
-        for label in [self.rgb_label, self.hex_label, self.hsv_label]:
-            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            label.setStyleSheet("font-size: 10pt; border: none;")
-            text_layout.addWidget(label)
-
-        layout.addLayout(text_layout)
-
-        return widget
-
     def _on_picker_color_changed(self):
+        old_color = selection_manager.selected_color
+        if not old_color:
+            return
+
         r, g, b = self.color_picker.getRGB()
-        rgba = (int(r), int(g), int(b), 255)
-        selection_manager.select_color(rgba)
+        new_color = (int(r), int(g), int(b), old_color[3])
+
+        if new_color == old_color:
+            return
+
+        # Update in image, palette, and ramps
+        self.viewer.replace_color(old_color, new_color)
+        #final_palette_manager.replace_color(old_color, new_color)
+        selection_manager.select_color(new_color)
 
     def update_color_details(self, selected_color, hovered_color):
         target_color = hovered_color or selected_color
         if target_color:
-            info = get_text_descriptions(target_color)
-            self.swatch.setStyleSheet(f"background-color: {info['hex_raw']}; border: 1px solid #000;")
-            self.rgb_label.setText(info["rgb"])
-            self.hex_label.setText(info["hex"])
-            self.hsv_label.setText(info["hsv"])
-
             color = QColor(*target_color)
             self.color_picker.blockSignals(True)
             self.color_picker.setRGB((color.red(), color.green(), color.blue()))
             self.color_picker.blockSignals(False)
+            self.color_picker.show()
         else:
-            self.swatch.setStyleSheet("background-color: #fff; border: 1px solid #000;")
-            self.rgb_label.setText("RGB:  -")
-            self.hex_label.setText("HEX:  -")
-            self.hsv_label.setText("HSV:  -")
+            self.color_picker.hide()
 
     def refresh_ramps(self):
         for i in reversed(range(self.ramp_layout.count())):

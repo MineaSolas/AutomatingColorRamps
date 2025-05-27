@@ -194,7 +194,6 @@ class ColorPicker(QWidget):
     # selector move function
     def moveSVSelector(self, event):
         if event.buttons() == Qt.MouseButton.LeftButton:
-            print(self.ui.black_overlay.width())
             width = self.ui.black_overlay.width()
             height = self.ui.black_overlay.height()
             x = min(max(0, event.position().x()), width)

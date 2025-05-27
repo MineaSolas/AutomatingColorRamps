@@ -16,7 +16,7 @@ class ImageViewer(QWidget):
         self.original_pixmap = None
         self.palette_square_size = palette_square_size
         self.show_color_details = show_color_details
-
+        self.image_array = None
         self._setup_ui(show_load_button)
         selection_manager.register_listener(self.on_selection_change)
 
@@ -113,11 +113,28 @@ class ImageViewer(QWidget):
             self.original_pixmap = QPixmap(file_path)
 
         if not self.original_pixmap.isNull():
+            self.image_array = self.get_image_array()
             self.set_initial_fit_zoom()
             self.update_image()
             self.extract_unique_colors()
             selection_manager.clear_selection()
             self.reset_color_details()
+
+    def replace_color(self, old_color, new_color):
+        if self.original_pixmap is None:
+            return
+
+        arr = self.get_image_array()
+        if arr is None:
+            return
+
+        mask = np.all(arr[:, :, :4] == old_color, axis=-1)
+        arr[mask] = new_color
+
+        self.image_array = arr
+        img = QImage(arr.data, arr.shape[1], arr.shape[0], QImage.Format.Format_RGBA8888)
+        self.original_pixmap = QPixmap.fromImage(img)
+        self.update_image()
 
     def update_image(self):
         if not self.original_pixmap:
@@ -171,15 +188,16 @@ class ImageViewer(QWidget):
         return np.array(ptr, dtype=np.uint8).reshape((qimage.height(), qimage.width(), 4))
 
     def on_selection_change(self, selected_color, hovered_color):
-        target_color = hovered_color or selected_color
-        if target_color:
-            if self.show_color_details:
-                self.update_overlay_text(target_color)
-                self.colorDetails.show()
-            self.update_image_highlight(target_color)
+        if self.show_color_details and (hovered_color or selected_color):
+            self.update_overlay_text(hovered_color or selected_color)
+            self.colorDetails.show()
+        elif not hovered_color:
+            self.reset_color_details()
+
+        if hovered_color:
+            self.update_image_highlight(hovered_color)
         else:
             self.update_image()
-            self.reset_color_details()
 
     def update_overlay_text(self, color):
         info = get_text_descriptions(color)

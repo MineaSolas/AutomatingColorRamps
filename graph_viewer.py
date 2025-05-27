@@ -409,7 +409,7 @@ class GraphViewer(QWidget):
             nx.draw_networkx_nodes(
                 graph, pos,
                 nodelist=[node],
-                node_size=500,
+                node_size=1000,
                 node_color=f"#{r:02X}{g:02X}{b:02X}",
                 ax=ax
             )
