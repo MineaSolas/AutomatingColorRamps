@@ -29,6 +29,9 @@ class ColorLabel(QLabel):
                 return
             global_selection_manager.select_color_id(self.color_group.color_id)
 
+        elif event.button() == Qt.MouseButton.RightButton:
+            event.ignore()
+
     def enterEvent(self, event):
         ramp = self.parent()
         if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer:
@@ -239,8 +242,8 @@ class ColorRamp(QWidget):
                     )
                     self.viewer.request_ramp_update(self.color_ramp, new_ramp)
 
-
         elif event.button() == Qt.MouseButton.RightButton:
+            print("remove")
             if self.source == "final" and self.viewer and self.viewer.tool_active("add_remove"):
                 x = event.position().x()
                 index = int((x - self.layout().contentsMargins().left()) / self.swatch_size)

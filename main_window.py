@@ -104,6 +104,7 @@ class MainWindow(QMainWindow):
     def open_ramp_window(self):
         if not self.viewer.original_pixmap:
             return
+        global_selection_manager.clear_selection()
         self.ramp_window = RampWindow(self.viewer.original_pixmap)
         self.ramp_window.ramps_saved.connect(self.refresh_ramps)
         self.ramp_window.show()
