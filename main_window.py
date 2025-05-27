@@ -63,20 +63,24 @@ class MainWindow(QMainWindow):
         global_selection_manager.register_listener(self.update_color_details)
 
     def _on_picker_color_changed(self):
-        old_color = global_selection_manager.selected_color
-        if not old_color:
+        selected_color_id = global_selection_manager.selected_color_id
+        if selected_color_id is None:
             return
 
-        r, g, b = self.color_picker.getRGB()
-        new_color = (int(r), int(g), int(b), old_color[3])
+        # Get the new RGB values from the color picker and preserve alpha
+        old_color = global_color_manager.color_groups[selected_color_id].current_color
+        r, g, b = [int(x) for x in self.color_picker.getRGB()]
+        new_color = (r, g, b, old_color[3])
 
         if new_color == old_color:
             return
 
-        # Update in image, palette, and ramps
-        self.viewer.replace_color(old_color, new_color)
-        #final_palette_manager.replace_color(old_color, new_color)
-        global_selection_manager.select_color(new_color)
+        # Update the color in both the color manager and image
+        global_color_manager.set_color(selected_color_id, new_color)
+        self.viewer.replace_color(selected_color_id, new_color)
+
+        # Re-select the color to trigger UI updates
+        global_selection_manager.select_color_id(selected_color_id)
 
     def update_color_details(self, selected_color_id, hovered_color_id):
         target_color_id = hovered_color_id or selected_color_id

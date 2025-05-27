@@ -9,10 +9,8 @@
 
 # The original code was edited to better suit this project, it should not be generated again using the .ui file.
 
-from PyQt6 import QtCore, QtGui, QtWidgets
-
-
 from PyQt6 import QtCore, QtWidgets
+
 
 class Ui_ColorPicker(object):
     def setupUi(self, ColorPicker):
@@ -77,12 +75,12 @@ class Ui_ColorPicker(object):
 
         # Color area frame
         self.color_view = QtWidgets.QFrame()
-        self.color_view.setFixedSize(QtCore.QSize(200, 200))
+        self.color_view.setFixedSize(QtCore.QSize(ColorPicker.width, ColorPicker.height))
         self.color_view.setStyleSheet("background: qlineargradient(x1:1, x2:0, stop:0 hsl(0%,100%,50%), stop:1 white);")
         self.color_view.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
 
         self.black_overlay = QtWidgets.QFrame(self.color_view)
-        self.black_overlay.setGeometry(QtCore.QRect(0, 0, 200, 200))
+        self.black_overlay.setGeometry(QtCore.QRect(0, 0, ColorPicker.width, ColorPicker.height))
         self.black_overlay.setStyleSheet("background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(0,0,0,0), stop:1 black);")
 
         self.selector = QtWidgets.QFrame(self.black_overlay)
@@ -93,7 +91,7 @@ class Ui_ColorPicker(object):
 
         # Hue slider
         self.hue_slider = QtWidgets.QFrame()
-        self.hue_slider.setMinimumSize(QtCore.QSize(20, 200))
+        self.hue_slider.setMinimumSize(QtCore.QSize(20, ColorPicker.height))
         self.hue_slider.setMaximumWidth(30)
         self.hue_slider.setStyleSheet("background: qlineargradient(y1:1, y2:0, stop:0 red, stop:0.17 yellow, stop:0.33 green, stop:0.5 cyan, stop:0.66 blue, stop:0.83 magenta, stop:1 red);")
         self.bottomRow.addWidget(self.hue_slider)

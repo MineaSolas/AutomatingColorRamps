@@ -123,19 +123,19 @@ class ImageViewer(QWidget):
             global_selection_manager.clear_selection()
             self.reset_color_details()
 
-    def replace_color(self, old_color, new_color):
-        if self.original_pixmap is None:
+    def replace_color(self, color_id, new_color):
+        if self.original_pixmap is None or color_id not in global_color_manager.color_groups:
             return
 
-        arr = self.get_image_array()
-        if arr is None:
-            return
+        positions = global_color_manager.color_groups[color_id].pixel_positions
 
-        mask = np.all(arr[:, :, :4] == old_color, axis=-1)
-        arr[mask] = new_color
+        for x, y in positions:
+            self.image_array[y, x] = new_color
 
-        self.image_array = arr
-        img = QImage(arr.data, arr.shape[1], arr.shape[0], QImage.Format.Format_RGBA8888)
+        img = QImage(self.image_array.data,
+                     self.image_array.shape[1],
+                     self.image_array.shape[0],
+                     QImage.Format.Format_RGBA8888)
         self.original_pixmap = QPixmap.fromImage(img)
         self.update_image()
 

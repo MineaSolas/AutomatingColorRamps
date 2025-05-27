@@ -8,12 +8,9 @@
 #                                       #
 # ------------------------------------- #
 
-import sys
 import colorsys
-
-from PyQt6.QtCore import (QPoint, Qt, pyqtSignal)
-from PyQt6.QtGui import QColor, QMouseEvent
-from PyQt6.QtWidgets import (QApplication, QWidget, QMainWindow)
+from PyQt6.QtCore import (Qt, pyqtSignal)
+from PyQt6.QtWidgets import (QWidget)
 
 
 from .ui_main import Ui_ColorPicker as Ui_Main
@@ -33,6 +30,8 @@ class ColorPicker(QWidget):
         super(ColorPicker, self).__init__(*args, **kwargs)
 
         # Call UI Builder function
+        self.width = 180
+        self.height = 100
         self.ui = Ui_Main()
         self.ui.setupUi(self)
 
@@ -83,7 +82,7 @@ class ColorPicker(QWidget):
         else:
             h = self.color[0]
 
-        s,v = ((self.ui.selector.x() + 6) / 2.0, (194 - self.ui.selector.y()) / 2.0)
+        s,v = ((self.ui.selector.x() + 6) / (self.width / 100.0), (self.height - self.ui.selector.y() - 6) / (self.height / 100.0))
         r,g,b = self.hsv2rgb(h,s,v)
         self.color = (h,s,v)
         self._setRGB((r,g,b))
@@ -137,7 +136,8 @@ class ColorPicker(QWidget):
         self.ui.value.setText(str(int(v)))
         self.ui.hue_selector.move(0, int((100 - h) * 1.85))  # Or your logic
         self.ui.color_view.setStyleSheet(f"border-radius: 5px;background-color: qlineargradient(x1:1, x2:0, stop:0 hsl({c[0]}%,100%,50%), stop:1 #fff);")
-        self.ui.selector.move(int(s * 2 - 6), int((200 - v * 2) - 6))
+        self.ui.selector.move(int(s * self.width / 100.0 - 6), int((self.height - v * self.height / 100.0) - 6))
+
 
     def _setHex(self, c):
         self.ui.hex.setText(c)
