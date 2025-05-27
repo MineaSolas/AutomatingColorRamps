@@ -15,6 +15,7 @@ class ImageViewer(QWidget):
     def __init__(self, show_load_button=True, palette_square_size=40, show_color_details=True):
         super().__init__()
         self.original_pixmap = None
+        self.current_image_path = None
         self.palette_square_size = palette_square_size
         self.show_color_details = show_color_details
         self.image_array = None
@@ -112,6 +113,8 @@ class ImageViewer(QWidget):
                 if not file_path:
                     return
             self.original_pixmap = QPixmap(file_path)
+
+        self.current_image_path = file_path
 
         if not self.original_pixmap.isNull():
             self.image_array = self.get_image_array()

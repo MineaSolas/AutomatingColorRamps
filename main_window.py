@@ -1,7 +1,10 @@
+import json
+import os
+
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout,
-    QHBoxLayout, QScrollArea
+    QHBoxLayout, QScrollArea, QFileDialog, QMessageBox
 )
 
 from colorpicker import ColorPicker
@@ -42,14 +45,30 @@ class MainWindow(QMainWindow):
         self.ramp_layout = QVBoxLayout(self.ramp_content)
         self.ramp_content.setLayout(self.ramp_layout)
         self.ramp_scroll.setWidget(self.ramp_content)
-        left_layout.addWidget(QLabel("Selected Ramps:"))
+        left_layout.addWidget(QLabel("Color Ramps:"))
         left_layout.addWidget(self.ramp_scroll, stretch=1)
 
-        # Extract Button
-        self.extract_button = QPushButton("Extract Color Ramps")
-        self.extract_button.clicked.connect(self.open_ramp_window)
-        left_layout.addWidget(self.extract_button)
+        # Button container
+        button_layout = QHBoxLayout()
 
+        # Extract Button
+        self.extract_button = QPushButton("Extract")
+        self.extract_button.clicked.connect(self.open_ramp_window)
+        button_layout.addWidget(self.extract_button)
+
+        # Export Button
+        self.export_button = QPushButton("Export")
+        self.export_button.clicked.connect(self.export_color_data)
+        self.export_button.setEnabled(False)  # Initially disabled
+        button_layout.addWidget(self.export_button)
+
+        # Import Button
+        self.import_button = QPushButton("Import")
+        self.import_button.clicked.connect(self.import_color_data)
+        self.import_button.setEnabled(False)  # Initially disabled
+        button_layout.addWidget(self.import_button)
+
+        left_layout.addLayout(button_layout)
         main_layout.addWidget(self.left_panel)
 
         # === RIGHT: IMAGE VIEWER ===
@@ -58,9 +77,26 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.viewer, stretch=1)
 
         self.viewer.load_image(file_path="resources/character/medium-contrast.png")
+        self.import_color_data("resources/exports/medium-contrast_ramps.json")
+
+        self.viewer.loadButton.clicked.connect(self.on_new_image_loaded)
 
         # Listen for color changes
         global_selection_manager.register_listener(self.update_color_details)
+        global_ramp_manager.register_listener(self.update_button_states)
+        self.update_button_states()
+
+    def on_new_image_loaded(self):
+        global_ramp_manager.clear_ramps()
+        self.refresh_ramps()
+
+    def update_button_states(self):
+        has_image = self.viewer.original_pixmap is not None
+        has_ramps = len(global_ramp_manager.get_ramps()) > 0
+
+        self.extract_button.setEnabled(has_image)
+        self.import_button.setEnabled(has_image)
+        self.export_button.setEnabled(has_ramps)
 
     def _on_picker_color_changed(self):
         selected_color_id = global_selection_manager.selected_color_id
@@ -105,6 +141,8 @@ class MainWindow(QMainWindow):
             ramp_widget = ColorRamp(ramp, source="final")
             self.ramp_layout.addWidget(ramp_widget)
 
+        self.update_button_states()
+
     def open_ramp_window(self):
         if not self.viewer.original_pixmap:
             return
@@ -113,3 +151,106 @@ class MainWindow(QMainWindow):
         self.ramp_window.ramps_saved.connect(self.refresh_ramps)
         self.ramp_window.show()
 
+    def export_color_data(self):
+        if not global_ramp_manager.get_ramps():
+            return
+
+        suggested_name = "color_ramps.json"
+        if self.viewer.current_image_path:
+            suggested_name = os.path.splitext(os.path.basename(self.viewer.current_image_path))[0] + "_ramps.json"
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Color Data",
+            suggested_name,
+            "Color Data Files (*.json)"
+        )
+        
+        if not file_path:
+            return
+        
+        data = {
+            'colors': {},
+            'ramps': []
+        }
+        
+        # Save color groups, converting numpy.uint8 to int
+        for color_id, group in global_color_manager.color_groups.items():
+            data['colors'][str(color_id)] = {
+                'color': tuple(int(x) for x in group.current_color),
+                'positions': list(group.pixel_positions)
+            }
+        
+        # Save ramps, converting any numpy.uint8 to int
+        ramps = []
+        for ramp in global_ramp_manager.get_ramps():
+            ramp_colors = []
+            for color in ramp:
+                if isinstance(color, (tuple, list)):
+                    ramp_colors.append(tuple(int(x) for x in color))
+                else:
+                    ramp_colors.append(color)
+            ramps.append(ramp_colors)
+        data['ramps'] = ramps
+        
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(data, f)
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export color data: {str(e)}")
+
+    def import_color_data(self, file_path=None):
+        if not self.viewer.original_pixmap:
+            return
+
+        if file_path is None:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Load Color Data",
+                "",
+                "Color Data Files (*.json)"
+            )
+
+        if not file_path or not os.path.exists(file_path):
+            return
+
+        try:
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+            
+            # Verify colors match current image
+            current_colors = {
+                str(cid): tuple(int(x) for x in group.current_color)
+                for cid, group in global_color_manager.color_groups.items()
+            }
+            imported_colors = {
+                cid: tuple(group['color'])
+                for cid, group in data['colors'].items()
+            }
+
+            if current_colors != imported_colors:
+                QMessageBox.critical(
+                    self,
+                    "Import Error",
+                    "The color values in the imported file don't match the current image colors."
+                )
+                return
+
+            # Import ramps
+            ramps = []
+            for ramp in data['ramps']:
+                ramp_colors = []
+                for color in ramp:
+                    if isinstance(color, (list, tuple)):
+                        ramp_colors.append(tuple(color))
+                    else:
+                        ramp_colors.append(color)
+                ramps.append(ramp_colors)
+
+            global_ramp_manager._ramps = ramps
+            global_ramp_manager._notify()
+
+            self.refresh_ramps()
+        
+        except Exception as e:
+            QMessageBox.critical(self, "Import Error", f"Failed to import color data: {str(e)}")

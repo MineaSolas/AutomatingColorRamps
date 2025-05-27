@@ -9,6 +9,7 @@ from colormath.color_objects import sRGBColor, LabColor
 from pyciede2000 import ciede2000
 from sklearn.cluster import AgglomerativeClustering
 
+import global_managers
 from color_utils import color_to_hsv, hsv_diffs, is_similar_hsv
 from global_managers import global_selection_manager, global_ramp_manager, global_color_manager
 from palette import ColorRamp, ColorPalette
@@ -782,6 +783,10 @@ class RampExtractionViewer(QWidget):
         if similarity_hsv_params is None:
             similarity_hsv_params = {'hue_threshold': 15, 'sat_threshold': 0.1, 'val_threshold': 0.1}
 
+        # Convert color IDs to actual colors
+        r1_colors = [global_color_manager.color_groups[color_id].current_color for color_id in r1]
+        r2_colors = [global_color_manager.color_groups[color_id].current_color for color_id in r2]
+
         # Quick check: same colors, just reordered
         if set(r1) == set(r2):
             return permutation_penalty
@@ -796,7 +801,7 @@ class RampExtractionViewer(QWidget):
 
         for i in range(1, len_r1 + 1):
             for j in range(1, len_r2 + 1):
-                c1, c2 = r1[i - 1], r2[j - 1]
+                c1, c2 = r1_colors[i - 1], r2_colors[j - 1]
 
                 if is_similar_hsv(c1, c2, **similarity_hsv_params):
                     subst_cost = 0
@@ -832,7 +837,8 @@ class RampExtractionViewer(QWidget):
 
     @staticmethod
     def evaluate_ramp_smoothness(ramp, min_length_in_cluster=3):
-        diffs = hsv_diffs(ramp)
+        colors = [global_managers.global_color_manager.color_groups[color_id].current_color for color_id in ramp]
+        diffs = hsv_diffs(colors)
         step_sizes = np.linalg.norm(diffs, axis=1)
 
         # Variance penalty
@@ -901,7 +907,8 @@ class RampExtractionViewer(QWidget):
                 swatches_layout.setContentsMargins(0, 0, 0, 0)
                 swatches_layout.setSpacing(0)
 
-                for color in ramp:
+                colors = [global_color_manager.color_groups[color_id].current_color for color_id in ramp]
+                for color in colors:
                     r, g, b, a = color
                     swatch = QLabel()
                     swatch.setFixedSize(25, 25)

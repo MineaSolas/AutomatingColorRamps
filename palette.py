@@ -243,7 +243,6 @@ class ColorRamp(QWidget):
                     self.viewer.request_ramp_update(self.color_ramp, new_ramp)
 
         elif event.button() == Qt.MouseButton.RightButton:
-            print("remove")
             if self.source == "final" and self.viewer and self.viewer.tool_active("add_remove"):
                 x = event.position().x()
                 index = int((x - self.layout().contentsMargins().left()) / self.swatch_size)

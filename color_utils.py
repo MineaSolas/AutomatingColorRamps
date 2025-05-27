@@ -67,6 +67,8 @@ def get_text_descriptions(color):
     }
 
 def color_to_hsv(c):
+    if isinstance(c, int):
+        c = global_managers.global_color_manager.color_groups[c].current_color
     r, g, b = [x / 255.0 for x in c[:3]]
     return colorsys.rgb_to_hsv(r, g, b)
 
@@ -100,8 +102,8 @@ def is_similar_ciede2000(c1, c2, threshold=100):
     delta_e = result['delta_E_00']
     return delta_e < threshold
 
-def hsv_diffs(path):
-    hsv_values = np.array([color_to_hsv(c) for c in path])
+def hsv_diffs(colors):
+    hsv_values = np.array([color_to_hsv(c) for c in colors])
     diffs = np.diff(hsv_values, axis=0)
     # Hue circular correction
     hue_diffs = diffs[:, 0]
