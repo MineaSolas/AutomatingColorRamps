@@ -10,7 +10,8 @@ from pyciede2000 import ciede2000
 from sklearn.cluster import AgglomerativeClustering
 
 from color_utils import color_to_hsv, hsv_diffs, is_similar_hsv
-from palette import ColorRamp, final_palette_manager, ColorPalette, selection_manager
+from global_managers import global_selection_manager, global_ramp_manager, global_color_manager
+from palette import ColorRamp, ColorPalette
 from ui_helpers import VerticalLabel
 
 class RampExtractionViewer(QWidget):
@@ -19,15 +20,15 @@ class RampExtractionViewer(QWidget):
     def _emit_save_signal(self):
         self.save_ramps.emit()
 
-    def __init__(self, graph_viewer, unique_colors, parent=None):
+    def __init__(self, graph_viewer, parent=None):
         super().__init__(parent)
         self.graph_viewer = graph_viewer
         self.generated_ramp_widgets = {}
         self.final_ramp_widgets = {}
-        self.unique_colors = set(unique_colors)
+        self.color_groups = global_color_manager.get_color_groups()
         self._setup_ui()
-        final_palette_manager.register_listener(self.refresh_ramp_views)
-        selection_manager.register_listener(self.update_tool_color_display)
+        global_ramp_manager.register_listener(self.refresh_ramp_views)
+        global_selection_manager.register_listener(self.update_tool_color_display)
 
     def _setup_ui(self):
         # Main layout
@@ -394,7 +395,6 @@ class RampExtractionViewer(QWidget):
         method = self.extraction_method_selector.currentText()
         params = self._get_extraction_params(method)
         remove_similar = self.remove_similar_checkbox.isChecked()
-
         skip_subsequences = self.skip_subsequences_checkbox.isChecked()
         skip_reverse = self.skip_reverse_checkbox.isChecked()
         skip_permutations = self.skip_permutations_checkbox.isChecked()
@@ -453,7 +453,7 @@ class RampExtractionViewer(QWidget):
 
         for ramp in ramps:
             widget = ColorRamp(ramp, source="generated")
-            widget.duplicated = ramp in final_palette_manager.get_ramps()
+            widget.duplicated = ramp in global_ramp_manager.get_ramps()
             widget.update_highlight()
             self.generated_ramp_widgets[tuple(ramp)] = widget
             self.ramps_layout.addWidget(widget)
@@ -467,15 +467,15 @@ class RampExtractionViewer(QWidget):
 
         # Empty ramp, remove it
         if not new_ramp:
-            final_palette_manager.remove_ramp(old_ramp)
+            global_ramp_manager.remove_ramp(old_ramp)
             return
 
         # Duplicate of existing ramp, remove it
-        if new_ramp != old_ramp and new_ramp in final_palette_manager.get_ramps():
-            final_palette_manager.remove_ramp(old_ramp)
+        if new_ramp != old_ramp and new_ramp in global_ramp_manager.get_ramps():
+            global_ramp_manager.remove_ramp(old_ramp)
             return
 
-        final_palette_manager.update_ramp(old_ramp, new_ramp)
+        global_ramp_manager.update_ramp(old_ramp, new_ramp)
 
         # Update the widget reference if needed
         if old_key in self.final_ramp_widgets:
@@ -484,7 +484,7 @@ class RampExtractionViewer(QWidget):
             widget.color_ramp = new_ramp
 
     def refresh_ramp_views(self):
-        current_ramps = final_palette_manager.get_ramps()
+        current_ramps = global_ramp_manager.get_ramps()
         current_keys = [tuple(r) for r in current_ramps]
 
         # Remove obsolete widgets
@@ -507,11 +507,18 @@ class RampExtractionViewer(QWidget):
 
         self.update_duplicates()
 
-        used_colors = {c for ramp in current_ramps for c in ramp}
-        unused_colors = sorted(self.unique_colors - used_colors, key=lambda c: (c[3], c[0], c[1], c[2]))
+        used_color_ids = set()
+        for ramp in global_ramp_manager.get_ramps():
+            used_color_ids.update(color_id for color_id in ramp)
 
-        self.unused_label.setText("Unused Colors:" if unused_colors else "Unused Colors: None")
-        self.unused_palette.populate(unused_colors, square_size=25)
+        unused_color_groups = [
+            group for group in self.color_groups
+            if group.color_id not in used_color_ids
+        ]
+
+        self.unused_label.setText("Unused Colors:" if unused_color_groups else "Unused Colors: None")
+        self.unused_palette.populate(unused_color_groups, square_size=25)
+
 
     def update_duplicates(self):
         generated_keys = set(self.generated_ramp_widgets.keys())
@@ -543,7 +550,10 @@ class RampExtractionViewer(QWidget):
 
         ramps = []
 
-        sorted_nodes = sorted(graph.nodes, key=lambda c: color_to_hsv(c)[2])  # Sort by brightness
+        sorted_nodes = sorted(
+            graph.nodes,
+            key=lambda color_id: color_to_hsv(global_color_manager.color_groups[color_id].current_color)[2]
+        )
         n = len(sorted_nodes)
 
         i = 0
@@ -582,14 +592,16 @@ class RampExtractionViewer(QWidget):
 
     @staticmethod
     def is_valid_ramp(path, method, params):
+        colors = [global_color_manager.color_groups[color_id].current_color for color_id in path]
+
         if method == "Basic HSV":
-            return RampExtractionViewer._is_valid_ramp_hsv(path, params)
+            return RampExtractionViewer._is_valid_ramp_hsv(colors, params)
 
         elif method == "Vector HSV":
-            return RampExtractionViewer._is_valid_ramp_vector_hsv(path, params)
+            return RampExtractionViewer._is_valid_ramp_vector_hsv(colors, params)
 
         elif method == "CIEDE2000":
-            return RampExtractionViewer.is_valid_ramp_ciede2000(path, params)
+            return RampExtractionViewer.is_valid_ramp_ciede2000(colors, params)
 
         return False
 
@@ -966,14 +978,16 @@ class RampExtractionViewer(QWidget):
                 return btn.text().lower().replace("/", "_")  # e.g., "add_remove"
         return None
 
-    def update_tool_color_display(self, selected_color, hovered_color):
-        if selected_color:
-            rgba = f"rgba({selected_color[0]},{selected_color[1]},{selected_color[2]},{selected_color[3]})"
+    def update_tool_color_display(self, selected_id, hovered_id):
+        if selected_id is not None and selected_id in self.color_groups:
+            color = self.color_groups[selected_id].current_color
+            r, g, b, a = color
             self.tool_color_preview.setText("")
             self.tool_color_preview.setStyleSheet(f"""
                 border: 1px solid #888;
-                background-color: {rgba};
+                background-color: rgba({r},{g},{b},{a});
             """)
+
         else:
             self.tool_color_preview.setText("No color")
             self.tool_color_preview.setStyleSheet("""
@@ -989,7 +1003,7 @@ class RampExtractionViewer(QWidget):
             self.generated_ramp_widgets.clear()
             self.final_ramp_widgets.clear()
             self.unused_palette.clear()
-            final_palette_manager.unregister_listener(self.refresh_ramp_views)
-            selection_manager.unregister_listener(self.update_tool_color_display)
+            global_ramp_manager.unregister_listener(self.refresh_ramp_views)
+            global_selection_manager.unregister_listener(self.update_tool_color_display)
         except:
             pass

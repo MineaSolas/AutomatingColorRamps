@@ -1,14 +1,13 @@
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QScrollArea
 )
 
-from color_utils import get_text_descriptions
 from colorpicker import ColorPicker
+from global_managers import global_selection_manager, global_ramp_manager, global_color_manager
 from image_viewer import ImageViewer
-from palette import ColorRamp, selection_manager, final_palette_manager
+from palette import ColorRamp
 from ramp_extraction_window import RampWindow
 
 
@@ -61,10 +60,10 @@ class MainWindow(QMainWindow):
         self.viewer.load_image(file_path="resources/character/medium-contrast.png")
 
         # Listen for color changes
-        selection_manager.register_listener(self.update_color_details)
+        global_selection_manager.register_listener(self.update_color_details)
 
     def _on_picker_color_changed(self):
-        old_color = selection_manager.selected_color
+        old_color = global_selection_manager.selected_color
         if not old_color:
             return
 
@@ -77,12 +76,14 @@ class MainWindow(QMainWindow):
         # Update in image, palette, and ramps
         self.viewer.replace_color(old_color, new_color)
         #final_palette_manager.replace_color(old_color, new_color)
-        selection_manager.select_color(new_color)
+        global_selection_manager.select_color(new_color)
 
-    def update_color_details(self, selected_color, hovered_color):
-        target_color = hovered_color or selected_color
-        if target_color:
-            color = QColor(*target_color)
+    def update_color_details(self, selected_color_id, hovered_color_id):
+        target_color_id = hovered_color_id or selected_color_id
+        if target_color_id is not None:
+            # Get the actual color from the color manager using the ID
+            actual_color = global_color_manager.color_groups[target_color_id].current_color
+            color = QColor(*actual_color)
             self.color_picker.blockSignals(True)
             self.color_picker.setRGB((color.red(), color.green(), color.blue()))
             self.color_picker.blockSignals(False)
@@ -96,7 +97,7 @@ class MainWindow(QMainWindow):
             if widget:
                 widget.deleteLater()
 
-        for ramp in final_palette_manager.get_ramps():
+        for ramp in global_ramp_manager.get_ramps():
             ramp_widget = ColorRamp(ramp, source="final")
             self.ramp_layout.addWidget(ramp_widget)
 

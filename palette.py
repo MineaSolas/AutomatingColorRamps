@@ -4,49 +4,46 @@ from PyQt6.QtCore import Qt, QEvent, QTimer
 
 from ui_helpers import FlowLayout
 from color_utils import get_highlight_color
-from global_managers import ColorSelectionManager, FinalPaletteManager
+from global_managers import ColorSelectionManager, ColorRampManager, global_selection_manager, global_ramp_manager, \
+    ColorGroup, global_color_manager
 
-selection_manager = ColorSelectionManager()
-final_palette_manager = FinalPaletteManager()
 
 class ColorLabel(QLabel):
-    def __init__(self, color, size=40, show_border=True, parent=None):
+    def __init__(self, color_group: ColorGroup, size=40, show_border=True, parent=None):
         super().__init__(parent)
-        self.color = color
+        self.color_group = color_group
         self.show_border = show_border
         self.tool_hovered = False
         self.setFixedSize(size, size)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.update_border()
-
-        # Listen for selection changes to update border
-        selection_manager.register_listener(self.on_selection_change)
+        self.set_default_border()
+        self.set_background_color()
+        global_selection_manager.register_listener(self.on_selection_changed)
 
     def mousePressEvent(self, event):
-        ramp = self.parent()
-        if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer and ramp.viewer.tool_active_any():
-            event.ignore()
-            return
-        selection_manager.select_color(self.color)
+        if event.button() == Qt.MouseButton.LeftButton:
+            ramp = self.parent()
+            if (getattr(ramp, "source", None) == "final" and hasattr(ramp,"viewer")
+                    and ramp.viewer and ramp.viewer.tool_active_any()):
+                event.ignore()
+                return
+            global_selection_manager.select_color_id(self.color_group.color_id)
 
     def enterEvent(self, event):
         ramp = self.parent()
         if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer:
             if ramp.viewer.tool_active("add_remove") or ramp.viewer.tool_active("split"):
                 self.tool_hovered = True
-        selection_manager.hover_color(self.color)
+        global_selection_manager.hover_color_id(self.color_group.color_id)
 
     def leaveEvent(self, event):
         ramp = self.parent()
         if getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer:
             if ramp.viewer.tool_active("add_remove") or ramp.viewer.tool_active("split"):
                 self.tool_hovered = False
-        selection_manager.clear_hover()
+        global_selection_manager.clear_hover()
 
-    def on_selection_change(self, selected_color, hovered_color):
-        self.update_border()
-
-    def update_border(self):
+    def on_selection_changed(self, selected_id, hovered_id):
         ramp = self.parent()
         tool_active = getattr(ramp, "source", None) == "final" and hasattr(ramp, "viewer") and ramp.viewer and ramp.viewer.tool_active_any()
 
@@ -56,30 +53,32 @@ class ColorLabel(QLabel):
                 self.setStyleSheet(f"border: 3px solid #ff00ff;")
                 self.set_background_color()
             else:
-                border_style = "1px solid #000;" if self.show_border else "none;"
-                self.setStyleSheet(f"border: {border_style}")
+                self.set_default_border()
                 self.set_background_color()
             return
 
-        is_selected = selection_manager.selected_color == self.color
-        is_hovered = selection_manager.hovered_color == self.color
+        is_selected = selected_id == self.color_group.color_id
+        is_hovered = hovered_id == self.color_group.color_id
 
         if is_hovered:
-            self.setStyleSheet(f"border: 3px solid {selection_manager.highlight_color};")
+            self.setStyleSheet(f"border: 3px solid {global_selection_manager.highlight_color};")
         elif is_selected:
-            selected_border_color = get_highlight_color(self.color)
+            selected_border_color = get_highlight_color(self.color_group.current_color)
             self.setStyleSheet(f"border: 5px solid {selected_border_color};")
         else:
-            border_style = "1px solid #000;" if self.show_border else "none;"
-            self.setStyleSheet(f"border: {border_style}")
+            self.set_default_border()
         self.set_background_color()
 
+    def set_default_border(self):
+        border_style = "1px solid #000;" if self.show_border else "none;"
+        self.setStyleSheet(f"border: {border_style}")
+
     def set_background_color(self):
-        r, g, b, a = self.color
+        r, g, b, a = self.color_group.current_color
         self.setStyleSheet(self.styleSheet() + f"; background-color: rgba({r},{g},{b},{a})")
 
     def deleteLater(self):
-        selection_manager.unregister_listener(self.on_selection_change)
+        global_selection_manager.unregister_listener(self.on_selection_changed)
         super().deleteLater()
 
 
@@ -91,11 +90,17 @@ class ColorPalette(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self.layout)
 
-    def populate(self, colors, square_size=40):
+    def populate(self, color_groups, square_size=40):
         self.clear()
-        for color in colors:
-            label = ColorLabel(color, size=square_size)
-            self.labels[color] = label
+        sorted_groups = sorted(
+            color_groups,
+            key=lambda g: (g.current_color[3], g.current_color[0],
+                           g.current_color[1], g.current_color[2])
+        )
+
+        for group in sorted_groups:
+            label = ColorLabel(group, size=square_size)
+            self.labels[group.color_id] = label
             self.layout.addWidget(label)
 
     def clear(self):
@@ -125,8 +130,10 @@ class ColorRamp(QWidget):
         layout.setContentsMargins(8, 12, 8, 12)
         layout.setSpacing(0)
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        for color in self.color_ramp:
-            label = ColorLabel(color, show_border=False, size=self.swatch_size)
+        color_groups = global_color_manager.get_color_groups()
+        for color_id in self.color_ramp:
+            group = color_groups[color_id]
+            label = ColorLabel(group, show_border=False, size=self.swatch_size)
             label.setMouseTracking(True)
             label.installEventFilter(self)
             layout.addWidget(label)
@@ -216,18 +223,18 @@ class ColorRamp(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             if self.source == "generated":
-                final_palette_manager.add_ramp(self.color_ramp)
+                global_ramp_manager.add_ramp(self.color_ramp)
 
             elif self.source == "final":
                 if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                    final_palette_manager.remove_ramp(self.color_ramp)
+                    global_ramp_manager.remove_ramp(self.color_ramp)
                 elif self.viewer and self.viewer.tool_active("add_remove"):
-                    color = selection_manager.selected_color
-                    if not color or self.hover_index is None:
+                    selected_id = global_selection_manager.selected_color_id
+                    if selected_id is None or self.hover_index is None:
                         return
                     new_ramp = (
                             self.color_ramp[:self.hover_index]
-                            + [color]
+                            + [selected_id]
                             + self.color_ramp[self.hover_index:]
                     )
                     self.viewer.request_ramp_update(self.color_ramp, new_ramp)
@@ -247,7 +254,7 @@ class ColorRamp(QWidget):
         new_key = tuple(new_ramp)
 
         def apply_update():
-            final_palette_manager.update_ramp(self.color_ramp, new_ramp)
+            global_ramp_manager.update_ramp(self.color_ramp, new_ramp)
             if self.viewer:
                 self.viewer.final_ramp_widgets.pop(old_key, None)
                 self.viewer.final_ramp_widgets[new_key] = self

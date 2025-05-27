@@ -6,6 +6,8 @@ from colormath.color_conversions import convert_color
 from colormath.color_objects import sRGBColor, LabColor
 from pyciede2000 import ciede2000
 
+import global_managers
+
 
 def extract_adjacent_color_pairs(image_array, use_8_neighbors=True):
     height, width, _ = image_array.shape
@@ -13,25 +15,39 @@ def extract_adjacent_color_pairs(image_array, use_8_neighbors=True):
     if use_8_neighbors:
         offsets += [(1, 1), (1, -1)]
 
-    color_counts = defaultdict(int)
+    # Create a mapping between colors and color IDs
+    pos_to_id = {}
+    id_counts = defaultdict(int)
+
+    # Map positions to color IDs using the global color manager
+    for color_id, group in global_managers.global_color_manager.color_groups.items():
+        for pos in group.pixel_positions:
+            pos_to_id[pos] = color_id
+            id_counts[color_id] += 1
+
     adjacency_counts = defaultdict(int)
 
     for y in range(height):
         for x in range(width):
-            c1 = tuple(image_array[y, x])
-            if c1[3] == 0:
+            if (x, y) not in pos_to_id:
                 continue
-            color_counts[c1] += 1
+
+            id1 = pos_to_id[(x, y)]
             for dy, dx in offsets:
                 ny, nx = y + dy, x + dx
                 if 0 <= ny < height and 0 <= nx < width:
-                    c2 = tuple(image_array[ny, nx])
-                    if c2[3] == 0 or c1 == c2:
+                    if (nx, ny) not in pos_to_id:
                         continue
-                    key = tuple(sorted((c1, c2)))
+
+                    id2 = pos_to_id[(nx, ny)]
+                    if id1 == id2:
+                        continue
+
+                    key = tuple(sorted([id1, id2]))
                     adjacency_counts[key] += 1
 
-    return adjacency_counts, color_counts
+    return adjacency_counts, id_counts
+
 
 def get_highlight_color(color):
     r, g, b = [c / 255.0 for c in color[:3]]

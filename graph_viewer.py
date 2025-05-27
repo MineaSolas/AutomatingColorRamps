@@ -9,12 +9,17 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib import pyplot as plt
 
 from color_utils import extract_adjacent_color_pairs, is_similar_hsv, is_similar_ciede2000
+from global_managers import global_color_manager
+
 
 class GraphViewer(QWidget):
-    def __init__(self, image_array, unique_colors, parent=None):
+    def __init__(self, image_array, parent=None):
         super().__init__(parent)
         self.image_array = image_array
-        self.unique_colors = list(unique_colors)
+        self.color_groups = {
+            group.color_id: group
+            for group in global_color_manager.get_color_groups()
+        }
 
         self.color_graph = None
         self.use_8_neighbors = False
@@ -276,7 +281,7 @@ class GraphViewer(QWidget):
                 self.update_timer.start(100)  # Delay in milliseconds
 
     def generate_graph(self):
-        if self.image_array is None or not self.unique_colors:
+        if self.image_array is None:
             return
 
         graph_type = self.graph_type_selector.currentText()
@@ -310,8 +315,8 @@ class GraphViewer(QWidget):
         )
 
         graph = nx.Graph()
-        for (c1, c2), count in filtered_pairs.items():
-            graph.add_edge(c1, c2)
+        for (id1, id2), count in filtered_pairs.items():
+            graph.add_edge(id1, id2)
 
         return graph
 
@@ -326,20 +331,28 @@ class GraphViewer(QWidget):
             sat_thresh = self.sat_slider.value() / 100.0
             val_thresh = self.val_slider.value() / 100.0
             valid_pairs = [
-                (c1, c2) for c1, c2 in self._cached_similarity_pairs
-                if is_similar_hsv(c1, c2, hue_thresh, sat_thresh, val_thresh)
+                (c1_id, c2_id) for c1_id, c2_id in self._cached_similarity_pairs
+                if is_similar_hsv(
+                    self.color_groups[c1_id].current_color,
+                    self.color_groups[c2_id].current_color,
+                    hue_thresh, sat_thresh, val_thresh
+                )
             ]
         elif method == "CIEDE2000":
             valid_pairs = [
-                (c1, c2) for c1, c2 in self._cached_similarity_pairs
-                if is_similar_ciede2000(c1, c2, threshold)
+                (c1_id, c2_id) for c1_id, c2_id in self._cached_similarity_pairs
+                if is_similar_ciede2000(
+                    self.color_groups[c1_id].current_color,
+                    self.color_groups[c2_id].current_color,
+                    threshold
+                )
             ]
         else:
             raise ValueError(f"Unknown color similarity method: {method}")
 
         graph = nx.Graph()
-        for c1, c2 in valid_pairs:
-            graph.add_edge(c1, c2)
+        for c1_id, c2_id in valid_pairs:
+            graph.add_edge(c1_id, c2_id)
 
         return graph
 
@@ -351,11 +364,10 @@ class GraphViewer(QWidget):
             combined_graph.add_edges_from(spatial_graph.edges)
             combined_graph.add_edges_from(color_graph.edges)
         elif method == "Intersection":
-            spatial_edges = {frozenset(edge) for edge in spatial_graph.edges}
-            color_edges = {frozenset(edge) for edge in color_graph.edges}
-            common_edges = spatial_edges.intersection(color_edges)
-            for edge in common_edges:
-                combined_graph.add_edge(*tuple(edge))
+            spatial_edges = set(spatial_graph.edges)
+            color_edges = set(color_graph.edges)
+            common_edges = spatial_edges & color_edges
+            combined_graph.add_edges_from(common_edges)
         else:
             raise ValueError(f"Unknown combination method: {method}")
 
@@ -370,12 +382,11 @@ class GraphViewer(QWidget):
 
     def calculate_similarity_pairs(self):
         if self._cached_similarity_pairs is None:
-            pairs = []
-            for c1 in self.unique_colors:
-                for c2 in self.unique_colors:
-                    if c1 != c2:
-                        pairs.append((c1, c2))
-            self._cached_similarity_pairs = pairs
+            color_ids = list(self.color_groups.keys())
+            self._cached_similarity_pairs = [
+                (c1, c2) for i, c1 in enumerate(color_ids)
+                for c2 in color_ids[i + 1:]
+            ]
 
     @staticmethod
     def filter_adjacency_pairs(pair_counts, color_counts, method, threshold):
@@ -383,38 +394,54 @@ class GraphViewer(QWidget):
             return {}
 
         if method == "Absolute":
-            return {pair: count for pair, count in pair_counts.items() if count >= threshold}
+            return {pair: count for pair, count in pair_counts.items()
+                    if count >= threshold}
 
         elif method == "Relative to color frequency":
             return {
                 pair: count for pair, count in pair_counts.items()
-                if (count / max(1, color_counts.get(pair[0], 1)) >= threshold / 100.0 or
-                    count / max(1, color_counts.get(pair[1], 1)) >= threshold / 100.0)
+                if (count / max(1, color_counts[pair[0]]) >= threshold / 100.0 or
+                    count / max(1, color_counts[pair[1]]) >= threshold / 100.0)
             }
 
         elif method == "Percentile-based":
             counts = np.array(list(pair_counts.values()))
             t_val = np.percentile(counts, threshold)
-            return {pair: count for pair, count in pair_counts.items() if count >= t_val}
+            return {pair: count for pair, count in pair_counts.items()
+                    if count >= t_val}
 
         raise ValueError(f"Unknown spatial filtering method: {method}")
+
 
     def display_graph(self, graph):
         fig, ax = plt.subplots(figsize=(6, 6))
         pos = nx.kamada_kawai_layout(graph)
         pos = self.perturb_positions(pos)
 
+        # Create a node colors list from color groups
+        node_colors = []
         for node in graph.nodes:
-            r, g, b, a = node
-            nx.draw_networkx_nodes(
-                graph, pos,
-                nodelist=[node],
-                node_size=1000,
-                node_color=f"#{r:02X}{g:02X}{b:02X}",
-                ax=ax
-            )
+            color = global_color_manager.color_groups[node].current_color
+            r, g, b, a = color
+            node_colors.append(f"#{r:02X}{g:02X}{b:02X}")
 
-        nx.draw_networkx_edges(graph, pos, width=1.5, alpha=0.6, edge_color="gray", ax=ax)
+        # Draw all nodes at once with their respective colors
+        nx.draw_networkx_nodes(
+            graph, pos,
+            node_size=500,
+            node_color=node_colors,
+            ax=ax
+        )
+
+        # Draw edges
+        nx.draw_networkx_edges(
+            graph, pos,
+            width=1.5,
+            alpha=0.6,
+            edge_color="gray",
+            ax=ax
+        )
+
         ax.set_axis_off()
         plt.close(fig)
 

@@ -7,7 +7,8 @@ import math
 from PIL import Image
 
 from color_utils import get_text_descriptions
-from palette import ColorPalette, selection_manager
+from global_managers import global_selection_manager, global_color_manager
+from palette import ColorPalette
 
 
 class ImageViewer(QWidget):
@@ -18,7 +19,7 @@ class ImageViewer(QWidget):
         self.show_color_details = show_color_details
         self.image_array = None
         self._setup_ui(show_load_button)
-        selection_manager.register_listener(self.on_selection_change)
+        global_selection_manager.register_listener(self.on_selection_change)
 
     def _setup_ui(self, show_load_button):
         self.layout = QVBoxLayout(self)
@@ -114,10 +115,12 @@ class ImageViewer(QWidget):
 
         if not self.original_pixmap.isNull():
             self.image_array = self.get_image_array()
+            global_color_manager.load_image(self.image_array)
+            color_groups = global_color_manager.get_color_groups()
+            self.color_palette.populate(color_groups, square_size=self.palette_square_size)
             self.set_initial_fit_zoom()
             self.update_image()
-            self.extract_unique_colors()
-            selection_manager.clear_selection()
+            global_selection_manager.clear_selection()
             self.reset_color_details()
 
     def replace_color(self, old_color, new_color):
@@ -168,17 +171,6 @@ class ImageViewer(QWidget):
         slider_val = max(1, int(round(math.log(zoom) / math.log(1.16) + 20)) - 2)
         self.zoomSlider.setValue(max(self.zoomSlider.minimum(), min(slider_val, self.zoomSlider.maximum())))
 
-    def extract_unique_colors(self):
-        if not self.original_pixmap:
-            return
-        qimage = self.original_pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
-        ptr = qimage.bits()
-        ptr.setsize(qimage.sizeInBytes())
-        arr = np.array(ptr, dtype=np.uint8).reshape((qimage.height(), qimage.width(), 4))
-        pixels = list(Image.fromarray(arr, mode='RGBA').getdata())
-        unique_colors = sorted(set(pixels), key=lambda c: (c[3], c[0], c[1], c[2]))
-        self.color_palette.populate([c for c in unique_colors if c[3] > 0], square_size=self.palette_square_size)
-
     def get_image_array(self):
         if not self.original_pixmap:
             return None
@@ -187,7 +179,15 @@ class ImageViewer(QWidget):
         ptr.setsize(qimage.sizeInBytes())
         return np.array(ptr, dtype=np.uint8).reshape((qimage.height(), qimage.width(), 4))
 
-    def on_selection_change(self, selected_color, hovered_color):
+    def on_selection_change(self, selected_color_id, hovered_color_id):
+        selected_color = None
+        if selected_color_id is not None:
+            selected_color = global_color_manager.color_groups[selected_color_id].current_color
+
+        hovered_color = None
+        if hovered_color_id is not None:
+            hovered_color = global_color_manager.color_groups[hovered_color_id].current_color
+
         if self.show_color_details and (hovered_color or selected_color):
             self.update_overlay_text(hovered_color or selected_color)
             self.colorDetails.show()
@@ -195,7 +195,7 @@ class ImageViewer(QWidget):
             self.reset_color_details()
 
         if hovered_color:
-            self.update_image_highlight(hovered_color)
+            self.update_image_highlight(hovered_color_id)
         else:
             self.update_image()
 
@@ -213,20 +213,18 @@ class ImageViewer(QWidget):
         self.colorTextHSV.setText("HSV: -")
         self.colorDetails.hide()
 
-    def update_image_highlight(self, target_color):
-        if not self.original_pixmap:
+    def update_image_highlight(self, color_id):
+        if not self.original_pixmap or color_id is None:
             return
 
-        r_target, g_target, b_target, a_target = target_color
         image = self.original_pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
         highlighted = QImage(image)
-        highlight_color = QColor(selection_manager.highlight_color)
+        highlight_color = QColor(global_selection_manager.highlight_color)
 
-        for x in range(image.width()):
-            for y in range(image.height()):
-                pix = image.pixelColor(x, y)
-                if (pix.red(), pix.green(), pix.blue(), pix.alpha()) == (r_target, g_target, b_target, a_target):
-                    highlighted.setPixelColor(x, y, highlight_color)
+        positions = global_color_manager.color_groups[color_id].pixel_positions
+
+        for x, y in positions:
+            highlighted.setPixelColor(x, y, highlight_color)
 
         zoom = self.get_zoom_factor()
         scaled_pixmap = QPixmap.fromImage(highlighted).scaled(
@@ -238,31 +236,30 @@ class ImageViewer(QWidget):
         self.imageLabel.setPixmap(scaled_pixmap)
 
     def image_mouse_move(self, event):
-        color = self.get_image_color_at_pos(event.pos())
-        if color and color[3] > 0:
-            selection_manager.hover_color(color)
-        else:
-            selection_manager.clear_hover()
+        coord = self.get_pixel_coordinates_at_pos(event.pos())
+        if coord:
+            x, y = coord
+            color_id = global_color_manager.get_color_id_at_position(x, y)
+            if color_id >= 0:
+                global_selection_manager.hover_color_id(color_id)
+                return
+        global_selection_manager.clear_hover()
 
     def image_mouse_click(self, event):
-        color = self.get_image_color_at_pos(event.pos())
-        if color and color[3] > 0:
-            selection_manager.select_color(color)
-        else:
-            selection_manager.clear_selection()
+        coord = self.get_pixel_coordinates_at_pos(event.pos())
+        if coord:
+            x, y = coord
+            color_id = global_color_manager.get_color_id_at_position(x, y)
+            if color_id >= 0:
+                global_selection_manager.select_color_id(color_id)
+                return
+        global_selection_manager.clear_selection()
 
     @staticmethod
     def image_mouse_leave(event):
-        selection_manager.clear_hover()
+        global_selection_manager.clear_hover()
 
-    def eventFilter(self, obj, event):
-        if obj == self.scrollArea and event.type() == QtCore.QEvent.Type.MouseButtonPress:
-            clicked_widget = self.childAt(event.position().toPoint())
-            if clicked_widget not in [self.imageLabel, self.colorDetails]:
-                selection_manager.clear_selection()
-        return super().eventFilter(obj, event)
-
-    def get_image_color_at_pos(self, pos):
+    def get_pixel_coordinates_at_pos(self, pos):
         if not self.original_pixmap or not self.imageLabel.pixmap():
             return None
 
@@ -275,13 +272,20 @@ class ImageViewer(QWidget):
         y = int((pos.y() - offset_y) / zoom)
 
         if 0 <= x < self.original_pixmap.width() and 0 <= y < self.original_pixmap.height():
-            return self.original_pixmap.toImage().pixelColor(x, y).getRgb()
+            return x, y
 
         return None
+
+    def eventFilter(self, obj, event):
+        if obj == self.scrollArea and event.type() == QtCore.QEvent.Type.MouseButtonPress:
+            clicked_widget = self.childAt(event.position().toPoint())
+            if clicked_widget not in [self.imageLabel, self.colorDetails]:
+                global_selection_manager.clear_selection()
+        return super().eventFilter(obj, event)
 
     def cleanup(self):
         try:
             self.color_palette.clear()
-            selection_manager.unregister_listener(self.on_selection_change)
+            global_selection_manager.unregister_listener(self.on_selection_change)
         except:
             pass
