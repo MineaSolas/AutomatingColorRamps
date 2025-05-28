@@ -39,7 +39,7 @@ class MainWindow(QMainWindow):
 
         # Color Picker Container
         self.color_picker_container = QWidget()
-        self.color_picker_container.setMinimumHeight(240)
+        self.color_picker_container.setMinimumHeight(260)
         color_picker_layout = QVBoxLayout(self.color_picker_container)
         color_picker_layout.setContentsMargins(0, 0, 0, 0)
         color_picker_layout.setSpacing(0)
@@ -72,17 +72,18 @@ class MainWindow(QMainWindow):
         gradient_layout.setContentsMargins(0, 0, 0, 0)
 
         self.gradient_style_combo = QComboBox()
-        self.gradient_style_combo.addItems(["No Preservation", "Preserve Curve", "Preserve Ratios"])
+        self.gradient_style_combo.addItems(["No Propagation", "Scale & Shift", "Preserve Ratios"])
         self.lock_ends_checkbox = QCheckBox("Lock Ramp Ends")
         self.lock_ends_checkbox.setChecked(False)
         self.lock_ends_checkbox.hide()
 
-        gradient_layout.addWidget(QLabel("Preservation Style:"))
+        gradient_layout.addWidget(QLabel("Propagation Style:"))
         gradient_layout.addWidget(self.gradient_style_combo)
         gradient_layout.addWidget(self.lock_ends_checkbox)
 
         # self.gradient_options.setVisible(False)
-        left_layout.addWidget(self.gradient_options)
+        color_picker_layout.addWidget(self.gradient_options)
+        self.gradient_options.hide()
 
         # Connect toggles
         self.gradient_mode_radio.toggled.connect(self._on_propagation_mode_changed)
@@ -195,46 +196,33 @@ class MainWindow(QMainWindow):
 
             new_hsv_ramp = []
 
-            if preserve_style == "No Preservation":
+            if preserve_style == "No Propagation":
                 # Just update the selected color without affecting others
                 new_hsv_ramp = list(hsv_ramp)
                 new_hsv_ramp[index] = (h1, s1, v1)
 
-            elif preserve_style == "Preserve Curve":
-                ramp_length = len(hsv_ramp)
-                positions = np.arange(ramp_length)
+            elif preserve_style == "Scale & Shift":
+                # Extract original S and V curves
+                orig_s = np.array([s for _, s, _ in hsv_ramp])
+                orig_v = np.array([v for _, _, v in hsv_ramp])
+                orig_h = np.array([h for h, _, _ in hsv_ramp])
 
-                h_list = np.array([h for h, _, _ in hsv_ramp])
-                s_list = np.array([s for _, s, _ in hsv_ramp])
-                v_list = np.array([v for _, _, v in hsv_ramp])
-
+                # Target new HSV
                 h_target, s_target, v_target = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
 
-                # Hue circular adjustment
-                delta_h = ((h_target - h_list[index] + 0.5) % 1.0) - 0.5
-                h_list_shifted = (h_list + delta_h) % 1.0
-                h_list_shifted[index] = h_target
-                if lock_ends:
-                    h_list_shifted[0] = h_list[0]
-                    h_list_shifted[-1] = h_list[-1]
-                new_h = np.interp(positions, positions, h_list_shifted)
-
                 # Morph S and V curves
-                s_list[index] = s_target
-                v_list[index] = v_target
-                if lock_ends:
-                    s_list[0] = s_list[0]
-                    s_list[-1] = s_list[-1]
-                    v_list[0] = v_list[0]
-                    v_list[-1] = v_list[-1]
-                new_s = np.interp(positions, positions, s_list)
-                new_v = np.interp(positions, positions, v_list)
+                new_s = self.morph_curve(orig_s, index, s_target, lock_ends)
+                new_v = self.morph_curve(orig_v, index, v_target, lock_ends)
 
-                # Replace entire new HSV ramp
-                new_hsv_ramp = [
-                    (float(h), float(s), float(v))
-                    for h, s, v in zip(new_h, np.clip(new_s, 0, 1), np.clip(new_v, 0, 1))
-                ]
+                # For hue, wrap delta as circular shift
+                delta_h = ((h_target - orig_h[index] + 0.5) % 1.0) - 0.5
+                new_h = (orig_h + delta_h) % 1.0
+                if lock_ends:
+                    new_h[0] = orig_h[0]
+                    new_h[-1] = orig_h[-1]
+
+                new_hsv_ramp = [(float(h), float(s), float(v)) for h, s, v in zip(new_h, new_s, new_v)]
+
 
             elif preserve_style == "Preserve Ratios":
                 new_hsv_ramp = []
@@ -276,6 +264,42 @@ class MainWindow(QMainWindow):
 
         global_selection_manager.select_color_id(selected_color_id)
 
+    @staticmethod
+    def morph_curve(orig_curve, target_index, new_value, lock_ends=False):
+        orig = np.array(orig_curve, dtype=float)
+        i = target_index
+
+        if lock_ends:
+            # Fit scale/shift such that start and end stay fixed
+            x1, x2 = orig[i], orig[-1]
+            y1, y2 = new_value, orig[-1]
+
+            if i == 0:
+                scale = 1.0
+                shift = new_value - orig[i]
+            elif x2 - x1 == 0:
+                scale = 1.0
+                shift = y1 - x1
+            else:
+                scale = (y2 - y1) / (x2 - x1)
+                shift = y1 - scale * x1
+
+            new_curve = scale * orig + shift
+            new_curve[0] = orig[0]
+            new_curve[-1] = orig[-1]
+
+        else:
+            orig = np.array(orig_curve, dtype=float)
+            if orig[target_index] == 0:
+                return orig
+
+            scale = new_value / orig[target_index]
+            mean_orig = orig.mean()
+            shift = mean_orig - (scale * mean_orig)
+            new_curve = scale * orig + shift
+
+        return np.clip(new_curve, 0, 1)
+
     def update_color_details(self, selected_color_id, hovered_color_id):
         target_color_id = hovered_color_id or selected_color_id
         if target_color_id is not None:
@@ -285,8 +309,10 @@ class MainWindow(QMainWindow):
             self.color_picker.set_rgb((actual_color[0], actual_color[1], actual_color[2]))
             self.color_picker.blockSignals(False)
             self.color_picker.setVisible(True)
+            self.gradient_options.setVisible(True)
         else:
             self.color_picker.setVisible(False)
+            self.gradient_options.setVisible(False)
 
     def refresh_ramps(self):
         for i in reversed(range(self.ramp_layout.count())):
@@ -357,13 +383,10 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Export Error", f"Failed to export color data: {str(e)}")
 
     def import_color_data(self, file_path=None):
-        print("import 1", self.viewer.original_pixmap)
         if not self.viewer.original_pixmap:
             return
 
-        print("import", file_path)
         if not file_path:
-            print("import")
             file_path, _ = QFileDialog.getOpenFileName(
                 self,
                 "Load Color Data",
