@@ -2,6 +2,7 @@ from PyQt6.QtGui import QPainter, QPen
 from PyQt6.QtWidgets import QLabel, QWidget, QHBoxLayout
 from PyQt6.QtCore import Qt, QEvent, QTimer
 
+from hsv_graph import HSVGraphWindow
 from ui_helpers import FlowLayout
 from color_utils import get_highlight_color
 from global_managers import ColorSelectionManager, ColorRampManager, global_selection_manager, global_ramp_manager, \
@@ -113,6 +114,8 @@ class ColorPalette(QWidget):
         self.labels.clear()
 
 class ColorRamp(QWidget):
+    _hsv_windows = []
+
     def __init__(self, color_ramp, swatch_size=25, source="generated", parent=None, viewer=None):
         super().__init__(parent)
         self.color_ramp = color_ramp
@@ -195,6 +198,27 @@ class ColorRamp(QWidget):
             self.hover_index = index
             self.update()
 
+    @staticmethod
+    def cleanup_hsv_windows(hsv_window):
+        if hsv_window in ColorRamp._hsv_windows:
+            ColorRamp._hsv_windows.remove(hsv_window)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            color_groups = global_color_manager.get_color_groups()
+            colors = [color_groups[color_id] for color_id in self.color_ramp]
+
+            # Create and show a new HSV graph window
+            hsv_window = HSVGraphWindow([c.current_color for c in colors])
+            hsv_window.setWindowTitle(f"HSV Progression")
+
+            # When window is closed, remove it from our list
+            hsv_window.destroyed.connect(self.cleanup_hsv_windows)
+
+            ColorRamp._hsv_windows.append(hsv_window)
+            hsv_window.show()
+
+
     def _compute_insertion_index(self, x_pos):
         total = self.layout().count()
         swatch_width = self.swatch_size
@@ -265,6 +289,10 @@ class ColorRamp(QWidget):
         QTimer.singleShot(0, apply_update)
 
     def deleteLater(self):
+        for window in ColorRamp._hsv_windows[:]:
+            window.close()
+            ColorRamp._hsv_windows.remove(window)
+
         for i in range(self.layout().count()):
             widget = self.layout().itemAt(i).widget()
             if widget:
