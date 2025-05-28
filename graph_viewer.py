@@ -364,10 +364,11 @@ class GraphViewer(QWidget):
             combined_graph.add_edges_from(spatial_graph.edges)
             combined_graph.add_edges_from(color_graph.edges)
         elif method == "Intersection":
-            spatial_edges = set(spatial_graph.edges)
-            color_edges = set(color_graph.edges)
-            common_edges = spatial_edges & color_edges
-            combined_graph.add_edges_from(common_edges)
+            spatial_edges = {frozenset(edge) for edge in spatial_graph.edges}
+            color_edges = {frozenset(edge) for edge in color_graph.edges}
+            common_edges = spatial_edges.intersection(color_edges)
+            for edge in common_edges:
+                combined_graph.add_edge(*tuple(edge))
         else:
             raise ValueError(f"Unknown combination method: {method}")
 
