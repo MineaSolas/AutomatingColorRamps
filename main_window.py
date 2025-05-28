@@ -73,6 +73,7 @@ class MainWindow(QMainWindow):
 
         self.gradient_style_combo = QComboBox()
         self.gradient_style_combo.addItems(["No Propagation", "Scale & Shift", "Preserve Ratios"])
+        self.gradient_style_combo.currentTextChanged.connect(self._on_preserve_style_changed)
         self.lock_ends_checkbox = QCheckBox("Lock Ramp Ends")
         self.lock_ends_checkbox.setChecked(False)
         self.lock_ends_checkbox.hide()
@@ -86,7 +87,7 @@ class MainWindow(QMainWindow):
         self.gradient_options.hide()
 
         # Connect toggles
-        self.gradient_mode_radio.toggled.connect(self._on_propagation_mode_changed)
+        # self.gradient_style_combo.toggled.connect(self._on_propagation_mode_changed)
 
         # Selected Ramps Viewer
         self.ramp_scroll = QScrollArea()
@@ -136,6 +137,9 @@ class MainWindow(QMainWindow):
         global_ramp_manager.register_listener(self.update_button_states)
         self.update_button_states()
 
+    def _on_preserve_style_changed(self, new_style):
+        self._on_picker_color_changed(refresh=True)
+
     def _on_propagation_mode_changed(self):
         is_gradient_mode = self.gradient_mode_radio.isChecked()
         self.gradient_options.setVisible(is_gradient_mode)
@@ -153,17 +157,19 @@ class MainWindow(QMainWindow):
         self.export_button.setEnabled(has_ramps)
 
 
-    def _on_picker_color_changed(self):
+    def _on_picker_color_changed(self, refresh=False):
         selected_color_id = global_selection_manager.selected_color_id
         if selected_color_id is None:
             return
 
-        r, g, b = [int(x) for x in self.color_picker.get_rgb()]
-
         current_color = global_color_manager.color_groups[selected_color_id].current_color
-        new_color = (r, g, b, current_color[3])
-        if new_color == current_color:
-            return
+        if refresh:
+            r, g, b, a = current_color
+        else:
+            r, g, b = [int(x) for x in self.color_picker.get_rgb()]
+            new_color = (r, g, b, current_color[3])
+            if new_color == current_color:
+                return
 
         is_gradient_mode = self.gradient_mode_radio.isChecked()
         preserve_style = self.gradient_style_combo.currentText()
