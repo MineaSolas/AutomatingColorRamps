@@ -1,7 +1,6 @@
 import json
 import os
 
-from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QScrollArea, QFileDialog, QMessageBox
@@ -105,7 +104,7 @@ class MainWindow(QMainWindow):
 
         # Get the new RGB values from the color picker and preserve alpha
         old_color = global_color_manager.color_groups[selected_color_id].current_color
-        r, g, b = [int(x) for x in self.color_picker.getRGB()]
+        r, g, b = [int(x) for x in self.color_picker.get_rgb()]
         new_color = (r, g, b, old_color[3])
 
         if new_color == old_color:
@@ -123,9 +122,8 @@ class MainWindow(QMainWindow):
         if target_color_id is not None:
             # Get the actual color from the color manager using the ID
             actual_color = global_color_manager.color_groups[target_color_id].current_color
-            color = QColor(*actual_color)
             self.color_picker.blockSignals(True)
-            self.color_picker.setRGB((color.red(), color.green(), color.blue()))
+            self.color_picker.set_rgb((actual_color[0], actual_color[1], actual_color[2]))
             self.color_picker.blockSignals(False)
             self.color_picker.show()
         else:

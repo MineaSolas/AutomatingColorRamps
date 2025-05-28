@@ -99,6 +99,7 @@ class Ui_ColorPicker(object):
         # Hue Selector Overlay
         self.hue_selector = QtWidgets.QLabel(self.hue_slider)
         self.hue_selector.setGeometry(QtCore.QRect(0, 0, 26, 15))
+        self.hue_selector_width = 26
         self.hue_selector.setStyleSheet("background-color: #222; border: 1px solid white; border-radius: 3px;")
         self.hue_selector.setObjectName("hue_selector")
 

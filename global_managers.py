@@ -145,7 +145,6 @@ class ColorRampManager:
         return list(self._ramps)
 
     def clear_ramps(self):
-        """Removes all ramps and notifies listeners."""
         if self._ramps:
             self._ramps.clear()
             self._notify()

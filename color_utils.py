@@ -57,7 +57,7 @@ def get_highlight_color(color):
 def get_text_descriptions(color):
     r, g, b = [int(c) for c in color[:3]]
     h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
-    h_deg, s_pct, v_pct = int(h * 360), int(s * 100), int(v * 100)
+    h_deg, s_pct, v_pct = int(h * 359), int(s * 100), int(v * 100)
     hex_str = f"#{r:02X}{g:02X}{b:02X}"
     return {
         "rgb": f"RGB:  ({r}, {g}, {b})",
@@ -79,7 +79,7 @@ def is_similar_hsv(c1, c2, hue_threshold=180, sat_threshold=1.0, val_threshold=1
     diffs = hsv1 - hsv2
     diffs[0] = (diffs[0] + 0.5) % 1.0 - 0.5  # Correct hue circular difference
 
-    hue_diff = abs(diffs[0]) * 360  # Convert to degrees
+    hue_diff = abs(diffs[0]) * 359  # Convert to degrees
     sat_diff = abs(diffs[1])
     val_diff = abs(diffs[2])
 
