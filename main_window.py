@@ -215,12 +215,26 @@ class MainWindow(QMainWindow):
                     new_s = max(0, min(1, s1 * s_ratio))
                     new_v = max(0, min(1, v1 * v_ratio))
                 else:  # Preserve Both
-                    factor = 1.0 - (abs(j - index) / ramp_length)
+                    position_factor = abs(j - index) / ramp_length
+
+                    # Curve component (stronger near the changed color)
+                    curve_factor = 1.0 - position_factor ** 2
+                    curve_h = (h + delta_h * curve_factor) % 1.0
+                    curve_s = s + delta_s * curve_factor
+                    curve_v = v + delta_v * curve_factor
+
+                    # Ratio component (stronger at the ends)
                     s_ratio = s / s0 if s0 else 1
                     v_ratio = v / v0 if v0 else 1
-                    new_h = (h + delta_h * factor) % 1.0
-                    new_s = max(0, min(1, s1 * s_ratio * (1 - factor) + (s + delta_s * factor) * factor))
-                    new_v = max(0, min(1, v1 * v_ratio * (1 - factor) + (v + delta_v * factor) * factor))
+                    ratio_h = (h + delta_h) % 1.0
+                    ratio_s = s1 * s_ratio
+                    ratio_v = v1 * v_ratio
+
+                    # Blend between the two based on position
+                    blend = position_factor  # More ratio-based as we get further
+                    new_h = (curve_h * (1 - blend) + ratio_h * blend) % 1.0
+                    new_s = max(0, min(1, curve_s * (1 - blend) + ratio_s * blend))
+                    new_v = max(0, min(1, curve_v * (1 - blend) + ratio_v * blend))
 
                 new_hsv_ramp.append((new_h, new_s, new_v))
 
