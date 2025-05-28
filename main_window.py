@@ -1,5 +1,7 @@
+import colorsys
 import json
 import os
+from copy import deepcopy
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout,
@@ -147,38 +149,42 @@ class MainWindow(QMainWindow):
         self.import_button.setEnabled(has_image)
         self.export_button.setEnabled(has_ramps)
 
+
     def _on_picker_color_changed(self):
         selected_color_id = global_selection_manager.selected_color_id
         if selected_color_id is None:
             return
 
-        old_color = global_color_manager.color_groups[selected_color_id].current_color
         r, g, b = [int(x) for x in self.color_picker.get_rgb()]
-        new_color = (r, g, b, old_color[3])
 
-        if new_color == old_color:
+        current_color = global_color_manager.color_groups[selected_color_id].current_color
+        new_color = (r, g, b, current_color[3])
+        if new_color == current_color:
             return
 
         is_gradient_mode = self.gradient_mode_radio.isChecked()
         preserve_style = self.gradient_style_combo.currentText()
         lock_ends = self.lock_ends_checkbox.isChecked()
 
-        affected_ramps = [r for r in global_ramp_manager.get_ramps() if selected_color_id in r]
-        if not affected_ramps:
-            # Fallback to direct update if not in any ramp
-            global_color_manager.set_color(selected_color_id, new_color)
-            self.viewer.replace_color(selected_color_id, new_color)
-            global_selection_manager.select_color_id(selected_color_id)
-            return
+        # Save original ramp state if first edit since selection
+        if selected_color_id != self._last_selected_id:
+            self._active_ramp_backup.clear()
+            self._last_selected_id = selected_color_id
+            for ramp in global_ramp_manager.get_ramps():
+                if selected_color_id in ramp:
+                    backup_colors = [(cid, deepcopy(global_color_manager.color_groups[cid].current_color)) for cid in ramp]
+                    self._active_ramp_backup[tuple(ramp)] = backup_colors
 
-        for ramp in affected_ramps:
-            index = ramp.index(selected_color_id)
-            color_groups = global_color_manager.get_color_groups()
-            original_colors = [color_groups[cid].current_color for cid in ramp]
+        # Use backup to compute changes
+        for ramp_key, ramp in self._active_ramp_backup.items():
+            if selected_color_id not in [cid for cid, _ in ramp]:
+                continue
+
+            index = next(i for i, (cid, _) in enumerate(ramp) if cid == selected_color_id)
+            original_colors = [color for _, color in self._active_ramp_backup[ramp_key]]
 
             # Convert to HSV
-            import colorsys
-            hsv_ramp = [colorsys.rgb_to_hsv(r / 255, g / 255, b / 255) for r, g, b, _ in original_colors]
+            hsv_ramp = [colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0) for r, g, b, _ in original_colors]
             h0, s0, v0 = hsv_ramp[index]
             h1, s1, v1 = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
             delta_h = ((h1 - h0 + 0.5) % 1.0) - 0.5
@@ -194,37 +200,36 @@ class MainWindow(QMainWindow):
                     new_hsv_ramp.append((h, s, v))
                     continue
 
-                # Gradient-aware logic: preserve ratios or curve
                 if preserve_style == "Preserve Curve":
-                    factor = (j - index) / (len(hsv_ramp) - 1) if j > index else (index - j) / (len(hsv_ramp) - 1)
+                    factor = abs(j - index) / (len(hsv_ramp) - 1)
                     new_h = (h + delta_h * factor) % 1.0
                     new_s = max(0, min(1, s + delta_s * factor))
                     new_v = max(0, min(1, v + delta_v * factor))
                 elif preserve_style == "Preserve Ratios":
-                    s_ratio = s / s0 if s0 != 0 else 1
-                    v_ratio = v / v0 if v0 != 0 else 1
+                    s_ratio = s / s0 if s0 else 1
+                    v_ratio = v / v0 if v0 else 1
                     new_h = (h + delta_h) % 1.0
                     new_s = max(0, min(1, s1 * s_ratio))
                     new_v = max(0, min(1, v1 * v_ratio))
                 else:  # Preserve Both
-                    pos_ratio = (j - index) / (len(hsv_ramp) - 1) if j > index else (index - j) / (len(hsv_ramp) - 1)
-                    s_ratio = s / s0 if s0 != 0 else 1
-                    v_ratio = v / v0 if v0 != 0 else 1
-                    new_h = (h + delta_h * pos_ratio) % 1.0
+                    factor = abs(j - index) / (len(hsv_ramp) - 1)
+                    s_ratio = s / s0 if s0 else 1
+                    v_ratio = v / v0 if v0 else 1
+                    new_h = (h + delta_h * factor) % 1.0
                     new_s = max(0, min(1, s1 * s_ratio))
                     new_v = max(0, min(1, v1 * v_ratio))
 
                 new_hsv_ramp.append((new_h, new_s, new_v))
 
-            # Convert back to RGB and apply
-            new_rgb_ramp = [tuple(int(x * 255) for x in colorsys.hsv_to_rgb(h, s, v)) + (original_colors[i][3],) for
-                            i, (h, s, v) in enumerate(new_hsv_ramp)]
+            new_rgb_ramp = [tuple(int(x * 255) for x in colorsys.hsv_to_rgb(h, s, v)) + (original_colors[i][3],)
+                            for i, (h, s, v) in enumerate(new_hsv_ramp)]
 
-            for cid, new_col in zip(ramp, new_rgb_ramp):
-                global_color_manager.set_color(cid, new_col)
-                self.viewer.replace_color(cid, new_col)
+            cid_list = [cid for cid, _ in self._active_ramp_backup[ramp_key]]
+            for cid, new_col in zip(cid_list, new_rgb_ramp):
+                 global_color_manager.set_color(cid, new_col)
+                 self.viewer.replace_color(cid, new_col)
 
-            global_selection_manager.select_color_id(selected_color_id)
+        global_selection_manager.select_color_id(selected_color_id)
 
     def update_color_details(self, selected_color_id, hovered_color_id):
         target_color_id = hovered_color_id or selected_color_id
