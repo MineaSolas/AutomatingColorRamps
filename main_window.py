@@ -26,16 +26,25 @@ class MainWindow(QMainWindow):
 
         # === LEFT CONTROL PANEL ===
         self.left_panel = QWidget()
-        self.left_panel.setFixedWidth(320)
+        self.left_panel.setMinimumWidth(300)
         left_layout = QVBoxLayout(self.left_panel)
         left_layout.setContentsMargins(8, 8, 8, 8)
         left_layout.setSpacing(10)
 
+        # Color Picker Container
+        self.color_picker_container = QWidget()
+        self.color_picker_container.setMinimumHeight(240)
+        color_picker_layout = QVBoxLayout(self.color_picker_container)
+        color_picker_layout.setContentsMargins(0, 0, 0, 0)
+        color_picker_layout.setSpacing(0)
+
         # Color Picker Widget
         self.color_picker = ColorPicker()
         self.color_picker.colorChanged.connect(self._on_picker_color_changed)
-        left_layout.addWidget(self.color_picker)
-        self.color_picker.hide()
+        color_picker_layout.addWidget(self.color_picker)
+        self.color_picker.setVisible(False)
+
+        left_layout.addWidget(self.color_picker_container)
 
         # Selected Ramps Viewer
         self.ramp_scroll = QScrollArea()
@@ -44,7 +53,7 @@ class MainWindow(QMainWindow):
         self.ramp_layout = QVBoxLayout(self.ramp_content)
         self.ramp_content.setLayout(self.ramp_layout)
         self.ramp_scroll.setWidget(self.ramp_content)
-        left_layout.addWidget(QLabel("Color Ramps:"))
+        left_layout.addWidget(QLabel("Color Ramps"))
         left_layout.addWidget(self.ramp_scroll, stretch=1)
 
         # Button container
@@ -125,9 +134,9 @@ class MainWindow(QMainWindow):
             self.color_picker.blockSignals(True)
             self.color_picker.set_rgb((actual_color[0], actual_color[1], actual_color[2]))
             self.color_picker.blockSignals(False)
-            self.color_picker.show()
+            self.color_picker.setVisible(True)
         else:
-            self.color_picker.hide()
+            self.color_picker.setVisible(False)
 
     def refresh_ramps(self):
         for i in reversed(range(self.ramp_layout.count())):

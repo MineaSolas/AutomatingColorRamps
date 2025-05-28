@@ -22,6 +22,7 @@ class Ui_ColorPicker(object):
         self.mainLayout.setContentsMargins(5, 5, 5, 5)
         self.mainLayout.setSpacing(5)
         self.mainLayout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.mainLayout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # === Top Row: Preview + Inputs ===
         self.topRow = QtWidgets.QHBoxLayout()
@@ -29,7 +30,7 @@ class Ui_ColorPicker(object):
         # Preview block
         self.color_vis = QtWidgets.QLabel()
         self.color_vis.setMinimumSize(QtCore.QSize(100, 70))
-        self.color_vis.setStyleSheet("background-color: #000; border: 1px solid #aaa;")
+        self.color_vis.setStyleSheet("background-color: #000; border: 1px solid #000;")
         self.topRow.addWidget(self.color_vis)
 
         # Input fields column
@@ -74,6 +75,7 @@ class Ui_ColorPicker(object):
         # === Bottom Row: Color Pad + Hue Slider ===
         self.bottomRow = QtWidgets.QHBoxLayout()
         self.bottomRow.setContentsMargins(0, 5, 5, 5)
+        self.bottomRow.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # Color area frame
         self.color_view = QtWidgets.QFrame()
@@ -93,7 +95,7 @@ class Ui_ColorPicker(object):
 
         # Hue slider
         self.hue_slider = QtWidgets.QFrame()
-        self.hue_slider.setMinimumSize(QtCore.QSize(30, ColorPicker.height))
+        self.hue_slider.setFixedSize(QtCore.QSize(30, ColorPicker.height))
         self.hue_slider.setStyleSheet("background: qlineargradient(y1:1, y2:0, stop:0 red, stop:0.17 yellow, stop:0.33 green, stop:0.5 cyan, stop:0.66 blue, stop:0.83 magenta, stop:1 red);")
         self.bottomRow.addWidget(self.hue_slider)
 
@@ -123,17 +125,3 @@ class Ui_ColorPicker(object):
         self.hex.setObjectName("hex")
 
         QtCore.QMetaObject.connectSlotsByName(ColorPicker)
-
-
-    def retranslateUi(self, ColorPicker):
-        _translate = QtCore.QCoreApplication.translate
-        self.lbl_rgb.setText(_translate("ColorPicker", "RGB:"))
-        self.lbl_hsv.setText(_translate("ColorPicker", "HSV:"))
-        self.lbl_hex.setText(_translate("ColorPicker", "HEX:"))
-        self.red.setText("255")
-        self.green.setText("255")
-        self.blue.setText("255")
-        self.hue_edit.setText("0")
-        self.saturation.setText("0")
-        self.value.setText("0")
-        self.hex.setText("ffffff")

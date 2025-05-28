@@ -12,7 +12,7 @@ import colorsys
 
 from PyQt6 import QtWidgets
 from PyQt6.QtCore import (Qt, pyqtSignal)
-from PyQt6.QtWidgets import (QWidget)
+from PyQt6.QtWidgets import (QWidget, QSizePolicy)
 
 
 from .ui_main import Ui_ColorPicker as Ui_Main
@@ -197,7 +197,7 @@ class ColorPicker(QWidget):
         try:
             self._set_rgb((r, g, b))
             self._set_hex(self.hsv2hex(self.color))
-            self.ui.color_vis.setStyleSheet(f"background-color: rgb({r},{g},{b})")
+            self.ui.color_vis.setStyleSheet(f"background-color: rgb({r},{g},{b}); border: 1px solid #000")
             self.ui.color_view.setStyleSheet(
                 f"border-radius: 5px;background-color: qlineargradient(x1:1, x2:0, stop:0 hsl({h},100%,50%), stop:1 #fff);"
             )
@@ -222,7 +222,7 @@ class ColorPicker(QWidget):
         self._set_hex(self.rgb2hex((r, g, b)))
 
         # Update color visualization
-        self.ui.color_vis.setStyleSheet(f"background-color: rgb({r},{g},{b})")
+        self.ui.color_vis.setStyleSheet(f"background-color: rgb({r},{g},{b}); border: 1px solid #000")
         self.ui.color_view.setStyleSheet(
             f"border-radius: 5px;background-color: qlineargradient(x1:1, x2:0, stop:0 hsl({h},100%,50%), stop:1 #fff);")
 
@@ -266,7 +266,7 @@ class ColorPicker(QWidget):
 
         self._set_hsv(self.color)
         self._set_hex(self.rgb2hex((r, g, b)))
-        self.ui.color_vis.setStyleSheet(f"background-color: rgb({r},{g},{b})")
+        self.ui.color_vis.setStyleSheet(f"background-color: rgb({r},{g},{b}); border: 1px solid #000")
         self.colorChanged.emit()
 
     def hex_changed(self):
@@ -284,7 +284,7 @@ class ColorPicker(QWidget):
 
         self._set_hsv(self.color)
         self._set_rgb(self.hex2rgb(hex_value))
-        self.ui.color_vis.setStyleSheet(f"background-color: rgb({r},{g},{b})")
+        self.ui.color_vis.setStyleSheet(f"background-color: rgb({r},{g},{b}); border: 1px solid #000")
         self.colorChanged.emit()
 
     ## internal setting functions ##
