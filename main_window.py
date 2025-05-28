@@ -3,7 +3,7 @@ import os
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout,
-    QHBoxLayout, QScrollArea, QFileDialog, QMessageBox
+    QHBoxLayout, QScrollArea, QFileDialog, QMessageBox, QGroupBox, QRadioButton, QComboBox, QCheckBox
 )
 
 from colorpicker import ColorPicker
@@ -45,6 +45,40 @@ class MainWindow(QMainWindow):
         self.color_picker.setVisible(False)
 
         left_layout.addWidget(self.color_picker_container)
+
+        # Mode Selection
+        self.mode_group = QGroupBox("Propagation Mode")
+        self.mode_group.setStyleSheet("font-weight: bold;")
+        mode_layout = QVBoxLayout(self.mode_group)
+
+        self.basic_mode_radio = QRadioButton("Basic")
+        self.gradient_mode_radio = QRadioButton("Gradient-Aware")
+        self.gradient_mode_radio.setChecked(True)
+
+        mode_layout.addWidget(self.basic_mode_radio)
+        mode_layout.addWidget(self.gradient_mode_radio)
+        left_layout.addWidget(self.mode_group)
+        self.mode_group.hide()
+
+        # Gradient-Aware Options
+        self.gradient_options = QWidget()
+        gradient_layout = QVBoxLayout(self.gradient_options)
+        gradient_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.gradient_style_combo = QComboBox()
+        self.gradient_style_combo.addItems(["Preserve Curve", "Preserve Ratios", "Preserve Both"])
+        self.lock_ends_checkbox = QCheckBox("Lock Ramp Ends")
+        self.lock_ends_checkbox.setChecked(True)
+
+        gradient_layout.addWidget(QLabel("Preservation Style:"))
+        gradient_layout.addWidget(self.gradient_style_combo)
+        gradient_layout.addWidget(self.lock_ends_checkbox)
+
+        # self.gradient_options.setVisible(False)
+        left_layout.addWidget(self.gradient_options)
+
+        # Connect toggles
+        self.gradient_mode_radio.toggled.connect(self._on_propagation_mode_changed)
 
         # Selected Ramps Viewer
         self.ramp_scroll = QScrollArea()
@@ -93,6 +127,10 @@ class MainWindow(QMainWindow):
         global_selection_manager.register_listener(self.update_color_details)
         global_ramp_manager.register_listener(self.update_button_states)
         self.update_button_states()
+
+    def _on_propagation_mode_changed(self):
+        is_gradient_mode = self.gradient_mode_radio.isChecked()
+        self.gradient_options.setVisible(is_gradient_mode)
 
     def on_new_image_loaded(self):
         global_ramp_manager.clear_ramps()

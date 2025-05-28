@@ -24,9 +24,13 @@ class HSVGraphWindow(QWidget):
         ax_colors = fig.add_subplot(gs[1])
 
         # Convert colors to HSV and create x-axis points
-        hsv_values = np.array([self._rgb_to_hsv(r/255, g/255, b/255)
-                              for r, g, b, _ in colors])
-        x = np.linspace(0, 1, len(colors))
+        hsv_values = np.array([self._rgb_to_hsv(r / 255, g / 255, b / 255)
+                               for r, g, b, _ in colors])
+
+        # Calculate x positions to align with color swatch centers
+        num_colors = len(colors)
+        swatch_width = 1.0 / num_colors
+        x = np.array([i * swatch_width + swatch_width / 2 for i in range(num_colors)])
 
         # Plot HSV lines
         ax_hsv.plot(x, hsv_values[:, 0], label='Hue', color='red', marker='o')
@@ -35,15 +39,15 @@ class HSVGraphWindow(QWidget):
 
         # Add point annotations
         for i, (h, s, v) in enumerate(hsv_values):
-            ax_hsv.annotate(f'H:{int(h*360)}°\nS:{int(s*100)}%\nV:{int(v*100)}%',
-                          (x[i], h),
-                          textcoords="offset points",
-                          xytext=(0, 10),
-                          ha='center',
-                          bbox=dict(boxstyle='round,pad=0.5',
-                                  fc='white',
-                                  ec='gray',
-                                  alpha=0.8))
+            ax_hsv.annotate(f'H:{int(h * 360)}°\nS:{int(s * 100)}%\nV:{int(v * 100)}%',
+                            (x[i], h),
+                            textcoords="offset points",
+                            xytext=(0, 10),
+                            ha='center',
+                            bbox=dict(boxstyle='round,pad=0.5',
+                                      fc='white',
+                                      ec='gray',
+                                      alpha=0.8))
 
         ax_hsv.set_ylim(0, 1)
         ax_hsv.set_xlim(0, 1)
@@ -57,10 +61,8 @@ class HSVGraphWindow(QWidget):
         ax_colors.set_yticks([])
 
         # Add x-ticks in the middle of each color swatch
-        swatch_width = 1.0 / len(colors)
-        x_ticks = [i * swatch_width + swatch_width/2 for i in range(len(colors))]
-        ax_colors.set_xticks(x_ticks)
-        ax_colors.set_xticklabels([f'Color {i+1}' for i in range(len(colors))])
+        ax_colors.set_xticks(x)
+        ax_colors.set_xticklabels([f'Color {i + 1}' for i in range(len(colors))])
 
         fig.tight_layout()
 
