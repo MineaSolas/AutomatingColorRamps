@@ -17,6 +17,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.ramp_window = None
+        self._active_ramp_backup = {}
+        self._last_selected_id = None
+
         self.setWindowTitle("Pixel Art Color Processor")
         self.resize(1600, 900)
 
@@ -149,7 +152,6 @@ class MainWindow(QMainWindow):
         if selected_color_id is None:
             return
 
-        # Get the new RGB values from the color picker and preserve alpha
         old_color = global_color_manager.color_groups[selected_color_id].current_color
         r, g, b = [int(x) for x in self.color_picker.get_rgb()]
         new_color = (r, g, b, old_color[3])
@@ -157,12 +159,72 @@ class MainWindow(QMainWindow):
         if new_color == old_color:
             return
 
-        # Update the color in both the color manager and image
-        global_color_manager.set_color(selected_color_id, new_color)
-        self.viewer.replace_color(selected_color_id, new_color)
+        is_gradient_mode = self.gradient_mode_radio.isChecked()
+        preserve_style = self.gradient_style_combo.currentText()
+        lock_ends = self.lock_ends_checkbox.isChecked()
 
-        # Re-select the color to trigger UI updates
-        global_selection_manager.select_color_id(selected_color_id)
+        affected_ramps = [r for r in global_ramp_manager.get_ramps() if selected_color_id in r]
+        if not affected_ramps:
+            # Fallback to direct update if not in any ramp
+            global_color_manager.set_color(selected_color_id, new_color)
+            self.viewer.replace_color(selected_color_id, new_color)
+            global_selection_manager.select_color_id(selected_color_id)
+            return
+
+        for ramp in affected_ramps:
+            index = ramp.index(selected_color_id)
+            color_groups = global_color_manager.get_color_groups()
+            original_colors = [color_groups[cid].current_color for cid in ramp]
+
+            # Convert to HSV
+            import colorsys
+            hsv_ramp = [colorsys.rgb_to_hsv(r / 255, g / 255, b / 255) for r, g, b, _ in original_colors]
+            h0, s0, v0 = hsv_ramp[index]
+            h1, s1, v1 = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+            delta_h = ((h1 - h0 + 0.5) % 1.0) - 0.5
+            delta_s = s1 - s0
+            delta_v = v1 - v0
+
+            new_hsv_ramp = []
+            for j, (h, s, v) in enumerate(hsv_ramp):
+                if j == index:
+                    new_hsv_ramp.append((h1, s1, v1))
+                    continue
+                if lock_ends and (j == 0 or j == len(hsv_ramp) - 1):
+                    new_hsv_ramp.append((h, s, v))
+                    continue
+
+                # Gradient-aware logic: preserve ratios or curve
+                if preserve_style == "Preserve Curve":
+                    factor = (j - index) / (len(hsv_ramp) - 1) if j > index else (index - j) / (len(hsv_ramp) - 1)
+                    new_h = (h + delta_h * factor) % 1.0
+                    new_s = max(0, min(1, s + delta_s * factor))
+                    new_v = max(0, min(1, v + delta_v * factor))
+                elif preserve_style == "Preserve Ratios":
+                    s_ratio = s / s0 if s0 != 0 else 1
+                    v_ratio = v / v0 if v0 != 0 else 1
+                    new_h = (h + delta_h) % 1.0
+                    new_s = max(0, min(1, s1 * s_ratio))
+                    new_v = max(0, min(1, v1 * v_ratio))
+                else:  # Preserve Both
+                    pos_ratio = (j - index) / (len(hsv_ramp) - 1) if j > index else (index - j) / (len(hsv_ramp) - 1)
+                    s_ratio = s / s0 if s0 != 0 else 1
+                    v_ratio = v / v0 if v0 != 0 else 1
+                    new_h = (h + delta_h * pos_ratio) % 1.0
+                    new_s = max(0, min(1, s1 * s_ratio))
+                    new_v = max(0, min(1, v1 * v_ratio))
+
+                new_hsv_ramp.append((new_h, new_s, new_v))
+
+            # Convert back to RGB and apply
+            new_rgb_ramp = [tuple(int(x * 255) for x in colorsys.hsv_to_rgb(h, s, v)) + (original_colors[i][3],) for
+                            i, (h, s, v) in enumerate(new_hsv_ramp)]
+
+            for cid, new_col in zip(ramp, new_rgb_ramp):
+                global_color_manager.set_color(cid, new_col)
+                self.viewer.replace_color(cid, new_col)
+
+            global_selection_manager.select_color_id(selected_color_id)
 
     def update_color_details(self, selected_color_id, hovered_color_id):
         target_color_id = hovered_color_id or selected_color_id
