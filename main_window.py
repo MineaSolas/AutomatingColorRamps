@@ -190,9 +190,6 @@ class MainWindow(QMainWindow):
             hsv_ramp = [colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0) for r, g, b, _ in original_colors]
             h0, s0, v0 = hsv_ramp[index]
             h1, s1, v1 = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
-            delta_h = ((h1 - h0 + 0.5) % 1.0) - 0.5
-            delta_s = s1 - s0
-            delta_v = v1 - v0
 
             new_hsv_ramp = []
 
@@ -222,7 +219,7 @@ class MainWindow(QMainWindow):
                     new_h[-1] = orig_h[-1]
 
                 new_hsv_ramp = [(float(h), float(s), float(v)) for h, s, v in zip(new_h, new_s, new_v)]
-
+                new_hsv_ramp[index] = (h1, s1, v1)
 
             elif preserve_style == "Preserve Ratios":
                 new_hsv_ramp = []
@@ -290,13 +287,13 @@ class MainWindow(QMainWindow):
 
         else:
             orig = np.array(orig_curve, dtype=float)
-            if orig[target_index] == 0:
+            if orig[i] == 0:
                 return orig
 
-            scale = new_value / orig[target_index]
+            scale = new_value / orig[i]
             mean_orig = orig.mean()
             shift = mean_orig - (scale * mean_orig)
-            new_curve = scale * orig + shift
+            new_curve = scale * orig + shift * 1.2
 
         return np.clip(new_curve, 0, 1)
 
