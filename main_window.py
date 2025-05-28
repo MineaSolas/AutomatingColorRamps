@@ -192,6 +192,8 @@ class MainWindow(QMainWindow):
             delta_v = v1 - v0
 
             new_hsv_ramp = []
+            ramp_length = len(hsv_ramp) - 1
+
             for j, (h, s, v) in enumerate(hsv_ramp):
                 if j == index:
                     new_hsv_ramp.append((h1, s1, v1))
@@ -201,10 +203,11 @@ class MainWindow(QMainWindow):
                     continue
 
                 if preserve_style == "Preserve Curve":
-                    factor = abs(j - index) / (len(hsv_ramp) - 1)
+                    factor = 1.0 - (abs(j - index) / ramp_length)
                     new_h = (h + delta_h * factor) % 1.0
                     new_s = max(0, min(1, s + delta_s * factor))
                     new_v = max(0, min(1, v + delta_v * factor))
+
                 elif preserve_style == "Preserve Ratios":
                     s_ratio = s / s0 if s0 else 1
                     v_ratio = v / v0 if v0 else 1
@@ -212,12 +215,12 @@ class MainWindow(QMainWindow):
                     new_s = max(0, min(1, s1 * s_ratio))
                     new_v = max(0, min(1, v1 * v_ratio))
                 else:  # Preserve Both
-                    factor = abs(j - index) / (len(hsv_ramp) - 1)
+                    factor = 1.0 - (abs(j - index) / ramp_length)
                     s_ratio = s / s0 if s0 else 1
                     v_ratio = v / v0 if v0 else 1
                     new_h = (h + delta_h * factor) % 1.0
-                    new_s = max(0, min(1, s1 * s_ratio))
-                    new_v = max(0, min(1, v1 * v_ratio))
+                    new_s = max(0, min(1, s1 * s_ratio * (1 - factor) + (s + delta_s * factor) * factor))
+                    new_v = max(0, min(1, v1 * v_ratio * (1 - factor) + (v + delta_v * factor) * factor))
 
                 new_hsv_ramp.append((new_h, new_s, new_v))
 
