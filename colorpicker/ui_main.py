@@ -10,17 +10,18 @@
 # The original code was edited to better suit this project, it should not be generated again using the .ui file.
 
 from PyQt6 import QtCore, QtWidgets
+from PyQt6.QtCore import Qt
 
 
 class Ui_ColorPicker(object):
     def setupUi(self, ColorPicker):
         ColorPicker.setObjectName("ColorPicker")
-        ColorPicker.resize(360, 360)
-        ColorPicker.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
+        ColorPicker.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Expanding)
 
         self.mainLayout = QtWidgets.QVBoxLayout(ColorPicker)
         self.mainLayout.setContentsMargins(5, 5, 5, 5)
         self.mainLayout.setSpacing(5)
+        self.mainLayout.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         # === Top Row: Preview + Inputs ===
         self.topRow = QtWidgets.QHBoxLayout()
@@ -72,6 +73,7 @@ class Ui_ColorPicker(object):
 
         # === Bottom Row: Color Pad + Hue Slider ===
         self.bottomRow = QtWidgets.QHBoxLayout()
+        self.bottomRow.setContentsMargins(0, 5, 5, 5)
 
         # Color area frame
         self.color_view = QtWidgets.QFrame()
@@ -91,8 +93,7 @@ class Ui_ColorPicker(object):
 
         # Hue slider
         self.hue_slider = QtWidgets.QFrame()
-        self.hue_slider.setMinimumSize(QtCore.QSize(20, ColorPicker.height))
-        self.hue_slider.setMaximumWidth(30)
+        self.hue_slider.setMinimumSize(QtCore.QSize(30, ColorPicker.height))
         self.hue_slider.setStyleSheet("background: qlineargradient(y1:1, y2:0, stop:0 red, stop:0.17 yellow, stop:0.33 green, stop:0.5 cyan, stop:0.66 blue, stop:0.83 magenta, stop:1 red);")
         self.bottomRow.addWidget(self.hue_slider)
 
@@ -104,9 +105,13 @@ class Ui_ColorPicker(object):
         self.hue_selector.setObjectName("hue_selector")
 
         self.bottomWidget = QtWidgets.QWidget()
-        self.bottomWidget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
+        self.bottomWidget.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
+        self.bottomWidget.setContentsMargins(0, 0, 0, 0)
         self.bottomWidget.setLayout(self.bottomRow)
-        self.mainLayout.addWidget(self.bottomWidget, stretch=1)
+        self.mainLayout.addWidget(self.bottomWidget)
 
         # === Tab Order & Object Names ===
         self.red.setObjectName("red")
