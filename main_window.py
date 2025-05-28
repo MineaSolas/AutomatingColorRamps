@@ -3,6 +3,7 @@ import json
 import os
 from copy import deepcopy
 
+import numpy as np
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QScrollArea, QFileDialog, QMessageBox, QGroupBox, QRadioButton, QComboBox, QCheckBox
@@ -71,7 +72,7 @@ class MainWindow(QMainWindow):
         gradient_layout.setContentsMargins(0, 0, 0, 0)
 
         self.gradient_style_combo = QComboBox()
-        self.gradient_style_combo.addItems(["Preserve Curve", "Preserve Ratios", "Preserve Both"])
+        self.gradient_style_combo.addItems(["Preserve Curve", "Preserve Ratios"])
         self.lock_ends_checkbox = QCheckBox("Lock Ramp Ends")
         self.lock_ends_checkbox.setChecked(True)
 
@@ -194,49 +195,58 @@ class MainWindow(QMainWindow):
             new_hsv_ramp = []
             ramp_length = len(hsv_ramp) - 1
 
-            for j, (h, s, v) in enumerate(hsv_ramp):
-                if j == index:
-                    new_hsv_ramp.append((h1, s1, v1))
-                    continue
-                if lock_ends and (j == 0 or j == len(hsv_ramp) - 1):
-                    new_hsv_ramp.append((h, s, v))
-                    continue
+            if preserve_style == "Preserve Curve":
+                ramp_length = len(hsv_ramp)
+                positions = np.arange(ramp_length)
 
-                if preserve_style == "Preserve Curve":
-                    factor = 1.0 - (abs(j - index) / ramp_length)
-                    new_h = (h + delta_h * factor) % 1.0
-                    new_s = max(0, min(1, s + delta_s * factor))
-                    new_v = max(0, min(1, v + delta_v * factor))
+                h_list = np.array([h for h, _, _ in hsv_ramp])
+                s_list = np.array([s for _, s, _ in hsv_ramp])
+                v_list = np.array([v for _, _, v in hsv_ramp])
 
-                elif preserve_style == "Preserve Ratios":
+                h_target, s_target, v_target = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+
+                # Hue circular adjustment
+                delta_h = ((h_target - h_list[index] + 0.5) % 1.0) - 0.5
+                h_list_shifted = (h_list + delta_h) % 1.0
+                h_list_shifted[index] = h_target
+                if lock_ends:
+                    h_list_shifted[0] = h_list[0]
+                    h_list_shifted[-1] = h_list[-1]
+                new_h = np.interp(positions, positions, h_list_shifted)
+
+                # Morph S and V curves
+                s_list[index] = s_target
+                v_list[index] = v_target
+                if lock_ends:
+                    s_list[0] = s_list[0]
+                    s_list[-1] = s_list[-1]
+                    v_list[0] = v_list[0]
+                    v_list[-1] = v_list[-1]
+                new_s = np.interp(positions, positions, s_list)
+                new_v = np.interp(positions, positions, v_list)
+
+                # Replace entire new HSV ramp
+                new_hsv_ramp = [
+                    (float(h), float(s), float(v))
+                    for h, s, v in zip(new_h, np.clip(new_s, 0, 1), np.clip(new_v, 0, 1))
+                ]
+
+            if preserve_style == "Preserve Ratios":
+                for j, (h, s, v) in enumerate(hsv_ramp):
+                    if j == index:
+                        new_hsv_ramp.append((h1, s1, v1))
+                        continue
+                    if lock_ends and (j == 0 or j == len(hsv_ramp) - 1):
+                        new_hsv_ramp.append((h, s, v))
+                        continue
+
                     s_ratio = s / s0 if s0 else 1
                     v_ratio = v / v0 if v0 else 1
                     new_h = (h + delta_h) % 1.0
                     new_s = max(0, min(1, s1 * s_ratio))
                     new_v = max(0, min(1, v1 * v_ratio))
-                else:  # Preserve Both
-                    position_factor = abs(j - index) / ramp_length
 
-                    # Curve component (stronger near the changed color)
-                    curve_factor = 1.0 - position_factor ** 2
-                    curve_h = (h + delta_h * curve_factor) % 1.0
-                    curve_s = s + delta_s * curve_factor
-                    curve_v = v + delta_v * curve_factor
-
-                    # Ratio component (stronger at the ends)
-                    s_ratio = s / s0 if s0 else 1
-                    v_ratio = v / v0 if v0 else 1
-                    ratio_h = (h + delta_h) % 1.0
-                    ratio_s = s1 * s_ratio
-                    ratio_v = v1 * v_ratio
-
-                    # Blend between the two based on position
-                    blend = position_factor  # More ratio-based as we get further
-                    new_h = (curve_h * (1 - blend) + ratio_h * blend) % 1.0
-                    new_s = max(0, min(1, curve_s * (1 - blend) + ratio_s * blend))
-                    new_v = max(0, min(1, curve_v * (1 - blend) + ratio_v * blend))
-
-                new_hsv_ramp.append((new_h, new_s, new_v))
+                    new_hsv_ramp.append((new_h, new_s, new_v))
 
             new_rgb_ramp = [tuple(int(x * 255) for x in colorsys.hsv_to_rgb(h, s, v)) + (original_colors[i][3],)
                             for i, (h, s, v) in enumerate(new_hsv_ramp)]
@@ -329,10 +339,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Export Error", f"Failed to export color data: {str(e)}")
 
     def import_color_data(self, file_path=None):
+        print("import 1", self.viewer.original_pixmap)
         if not self.viewer.original_pixmap:
             return
 
-        if file_path is None:
+        print("import", file_path)
+        if not file_path:
+            print("import")
             file_path, _ = QFileDialog.getOpenFileName(
                 self,
                 "Load Color Data",
