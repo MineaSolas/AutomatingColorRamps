@@ -4,6 +4,7 @@ import os
 from copy import deepcopy
 
 import numpy as np
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QScrollArea, QFileDialog, QMessageBox, QGroupBox, QRadioButton, QComboBox, QCheckBox
@@ -92,6 +93,8 @@ class MainWindow(QMainWindow):
         # Selected Ramps Viewer
         self.ramp_scroll = QScrollArea()
         self.ramp_scroll.setWidgetResizable(True)
+        self.ramp_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)  # Add this line
+        self.ramp_scroll.setMinimumWidth(350)
         self.ramp_content = QWidget()
         self.ramp_layout = QVBoxLayout(self.ramp_content)
         self.ramp_content.setLayout(self.ramp_layout)
@@ -127,8 +130,8 @@ class MainWindow(QMainWindow):
         self.viewer.colorDetails.hide()  # Permanently hide overlay
         main_layout.addWidget(self.viewer, stretch=1)
 
-        self.viewer.load_image(file_path="resources/character/medium-contrast.png")
-        self.import_color_data("resources/exports/medium-contrast_ramps.json")
+        self.viewer.load_image(file_path="resources/harvest.png")
+        self.import_color_data("resources/exports/harvest_ramps3.json")
 
         self.viewer.loadButton.clicked.connect(self.on_new_image_loaded)
 
@@ -264,6 +267,10 @@ class MainWindow(QMainWindow):
             for cid, new_col in zip(cid_list, new_rgb_ramp):
                  global_color_manager.set_color(cid, new_col)
                  self.viewer.replace_color(cid, new_col)
+
+        # Add these lines to update the color palette
+        color_groups = global_color_manager.get_color_groups()
+        self.viewer.color_palette.populate(color_groups, square_size=self.viewer.palette_square_size, sort=False)
 
         global_selection_manager.select_color_id(selected_color_id)
 

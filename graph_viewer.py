@@ -447,7 +447,7 @@ class GraphViewer(QWidget):
         plt.close(fig)
 
         canvas = FigureCanvas(fig)
-        canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         holder_layout = self.graph_canvas_holder.layout()
         if not holder_layout:

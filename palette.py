@@ -94,13 +94,17 @@ class ColorPalette(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self.layout)
 
-    def populate(self, color_groups, square_size=40):
+    def populate(self, color_groups, square_size=40, sort=False):
         self.clear()
-        sorted_groups = sorted(
-            color_groups,
-            key=lambda g: (g.current_color[3], g.current_color[0],
-                           g.current_color[1], g.current_color[2])
-        )
+
+        if sort:
+            sorted_groups = sorted(
+                color_groups,
+                key=lambda g: (g.current_color[3], g.current_color[0],
+                               g.current_color[1], g.current_color[2])
+            )
+        else:
+            sorted_groups = color_groups
 
         for group in sorted_groups:
             label = ColorLabel(group, size=square_size)
