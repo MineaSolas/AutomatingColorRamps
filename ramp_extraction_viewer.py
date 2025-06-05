@@ -1,3 +1,5 @@
+from time import monotonic
+
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider, QPushButton,
@@ -270,6 +272,9 @@ class RampExtractionViewer(QWidget):
         self.h_tol_slider = None
         self.s_tol_slider = None
         self.v_tol_slider = None
+        self.h_monotony_checkbox = None
+        self.s_monotony_checkbox = None
+        self.v_monotony_checkbox = None
 
         widget = QWidget()
         layout = QGridLayout(widget)
@@ -297,11 +302,14 @@ class RampExtractionViewer(QWidget):
                 group_layout
             )
 
-            setattr(self, f"{attr_prefix}_tol_slider", self._create_slider("Step Variance Max", 0, 100, 20, group_layout))
-            layout.addWidget(group_box, row, 1)
 
-        self.monotonicity_checkbox = QCheckBox("Monotonous HSV Directions")
-        layout.addWidget(self.monotonicity_checkbox, len(factors), 0, 1, 2)
+            setattr(self, f"{attr_prefix}_tol_slider", self._create_slider("Step Variance Max", 0, 100, 20, group_layout))
+
+            monotony_checkbox = QCheckBox("Strictly Monotonous")
+            group_layout.addWidget(monotony_checkbox)
+            setattr(self, f"{attr_prefix}_monotony_checkbox", monotony_checkbox)
+
+            layout.addWidget(group_box, row, 1)
 
         return widget
 
@@ -418,21 +426,25 @@ class RampExtractionViewer(QWidget):
         if method == "Basic HSV":
             return {
                 'max_step': [
-                    self.h_slider.value() / 180.0,
+                    self.h_slider.value(),
                     self.s_slider.value() / 100.0,
                     self.v_slider.value() / 100.0
                 ],
                 'min_step': [
-                    self.h_min_slider.value() / 180.0,
+                    self.h_min_slider.value(),
                     self.s_min_slider.value() / 100.0,
                     self.v_min_slider.value() / 100.0
                 ],
-                'tolerance': [
-                    self.h_tol_slider.value() / 180.0,
+                'step_tolerance': [
+                    self.h_tol_slider.value(),
                     self.s_tol_slider.value() / 100.0,
                     self.v_tol_slider.value() / 100.0
                 ],
-                'monotonicity': self.monotonicity_checkbox.isChecked()
+                'strict_monotony': [
+                    self.h_monotony_checkbox.isChecked(),
+                    self.s_monotony_checkbox.isChecked(),
+                    self.v_monotony_checkbox.isChecked()
+                ]
             }
 
         elif method == "Vector HSV":
@@ -607,29 +619,32 @@ class RampExtractionViewer(QWidget):
         return False
 
     @staticmethod
-    def _is_valid_ramp_hsv(path, params):
-        diffs = hsv_diffs(path)
+    def _is_valid_ramp_hsv(colors, params):
 
-        for i in range(3):  # H, S, V
-            comp_diffs = diffs[:, i]
-            abs_diffs = np.abs(comp_diffs)
+        # Get differences using existing function
+        diffs = hsv_diffs(colors)
 
-            # Check max step
-            if not np.all(abs_diffs <= params.get('max_step', [1, 1, 1])[i] + 1e-5):
+        # For each component (H, S, V)
+        for idx in range(3):
+            component_diffs = diffs[:, idx]
+
+            # Check step sizes
+            steps = np.abs(component_diffs)
+            if np.any(steps < params['min_step'][idx]):
+                return False
+            if np.any(steps > params['max_step'][idx]):
                 return False
 
-            # Check min step
-            if not np.all(abs_diffs >= params.get('min_step', [0, 0, 0])[i] - 1e-5):
-                return False
+            # Check step size consistency
+            if len(steps) > 1:
+                step_differences = np.abs(steps[1:] - steps[:-1])
+                if np.any(step_differences > params['step_tolerance'][idx]):
+                    return False
 
-            # Check step variance
-            if not RampExtractionViewer.is_consistent_step_size(
-                    comp_diffs, params.get('tolerance', [0.1, 0.1, 0.1])[i]):
-                return False
-
-            # Monotonicity Check (Optional)
-            if params.get('monotonicity', False):
-                if not RampExtractionViewer.is_monotonic_direction(comp_diffs):
+            # Check monotonicity if required
+            if params['strict_monotony'][idx]:
+                signs = np.sign(component_diffs)
+                if not (np.all(signs >= 0) or np.all(signs <= 0)):
                     return False
 
         return True

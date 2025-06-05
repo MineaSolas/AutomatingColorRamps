@@ -105,9 +105,14 @@ def is_similar_ciede2000(c1, c2, threshold=100):
 def hsv_diffs(colors):
     hsv_values = np.array([color_to_hsv(c) for c in colors])
     diffs = np.diff(hsv_values, axis=0)
+
     # Hue circular correction
     hue_diffs = diffs[:, 0]
     hue_diffs = (hue_diffs + 0.5) % 1.0 - 0.5
     diffs[:, 0] = hue_diffs
+
+    # Convert hue to degrees for more intuitive parameters
+    diffs[:, 0] *= 360
+
     return diffs
 
