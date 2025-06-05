@@ -430,67 +430,73 @@ class RampExtractionViewer(QWidget):
         # Calculate smoothness for each ramp
         ramp_scores = [(ramp, self.evaluate_ramp_smoothness(ramp)[0]) for ramp in ramps]
 
-        # Filter based on permutations if enabled
+        # Filter results
         if skip_permutations:
-            # Group ramps by their set of colors
-            perm_groups = {}
-            for ramp, score in ramp_scores:
-                color_set = frozenset(ramp)
-                if color_set not in perm_groups:
-                    perm_groups[color_set] = []
-                perm_groups[color_set].append((ramp, score))
+            ramp_scores = self._remove_permutations(ramp_scores)
 
-            # Keep only the best scoring ramp from each permutation group
-            ramp_scores = [max(group, key=lambda x: x[1])
-                           for group in perm_groups.values()]
-
-        # Filter based on reverses if enabled (and permutations are not)
         if skip_reverse and not skip_permutations:
-            # Group ramps with their reverses
-            processed = set()
-            filtered_scores = []
-            for ramp, score in ramp_scores:
-                if tuple(ramp) in processed:
-                    continue
+            ramp_scores = self._remove_reverses(ramp_scores)
 
-                reverse = tuple(reversed(ramp))
-                processed.add(tuple(ramp))
-                processed.add(reverse)
-
-                # Find scores for both original and reverse
-                reverse_score = next((s for r, s in ramp_scores if tuple(r) == reverse), None)
-                if reverse_score is not None:
-                    # Keep the better scoring version
-                    if score >= reverse_score:
-                        filtered_scores.append((ramp, score))
-                    else:
-                        filtered_scores.append((list(reverse), reverse_score))
-                else:
-                    filtered_scores.append((ramp, score))
-
-            ramp_scores = filtered_scores
-
-        # Filter subsequences if enabled
         if skip_subsequences:
-            # Sort by score (descending) and length (descending) for stable results
-            ramp_scores.sort(key=lambda x: (-x[1], -len(x[0])))
+            ramp_scores = self._remove_subsequences(ramp_scores)
 
-            filtered_scores = []
-            for ramp, score in ramp_scores:
-                # Check if this ramp is a subsequence of any already accepted ramp
-                if not self.is_subsequence_of_any(ramp, [r for r, _ in filtered_scores]):
-                    filtered_scores.append((ramp, score))
-
-            ramp_scores = filtered_scores
-
-        # Get final ramps sorted by score
-        final_ramps = [ramp for ramp, _ in sorted(ramp_scores, key=lambda x: -x[1])]
-
-        # Apply similarity filter if requested
+        final_ramps = [ramp for ramp, _ in ramp_scores]
         if len(final_ramps) > 2 and remove_similar:
             final_ramps = self.remove_similar_ramps(final_ramps)
 
         self.display_color_ramps(final_ramps)
+
+    @staticmethod
+    def _remove_subsequences(ramp_scores):
+        # Sort by score (descending) and length (descending) for stable results
+        ramp_scores.sort(key=lambda x: (-x[1], -len(x[0])))
+        filtered_scores = []
+        for ramp, score in ramp_scores:
+            # Check if this ramp is a subsequence of any already accepted ramp
+            if not RampExtractionViewer.is_subsequence_of_any(ramp, [r for r, _ in filtered_scores]):
+                filtered_scores.append((ramp, score))
+        ramp_scores = filtered_scores
+        return ramp_scores
+
+    @staticmethod
+    def _remove_reverses(ramp_scores):
+        # Group ramps with their reverses
+        processed = set()
+        filtered_scores = []
+        for ramp, score in ramp_scores:
+            if tuple(ramp) in processed:
+                continue
+
+            reverse = tuple(reversed(ramp))
+            processed.add(tuple(ramp))
+            processed.add(reverse)
+
+            # Find scores for both original and reverse
+            reverse_score = next((s for r, s in ramp_scores if tuple(r) == reverse), None)
+            if reverse_score is not None:
+                # Keep the better scoring version
+                if score >= reverse_score:
+                    filtered_scores.append((ramp, score))
+                else:
+                    filtered_scores.append((list(reverse), reverse_score))
+            else:
+                filtered_scores.append((ramp, score))
+        ramp_scores = filtered_scores
+        return ramp_scores
+
+    @staticmethod
+    def _remove_permutations(ramp_scores):
+        # Group ramps by their set of colors
+        perm_groups = {}
+        for ramp, score in ramp_scores:
+            color_set = frozenset(ramp)
+            if color_set not in perm_groups:
+                perm_groups[color_set] = []
+            perm_groups[color_set].append((ramp, score))
+        # Keep only the best scoring ramp from each permutation group
+        ramp_scores = [max(group, key=lambda x: x[1])
+                       for group in perm_groups.values()]
+        return ramp_scores
 
     def _get_extraction_params(self, method):
         if method == "Basic HSV":
