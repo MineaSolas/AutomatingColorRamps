@@ -399,20 +399,30 @@ class GraphViewer(QWidget):
                     if count >= threshold}
 
         elif method == "Relative to color frequency":
+            relative_counts = GraphViewer.calculate_relative_adjacency(pair_counts, color_counts)
             return {
                 pair: count for pair, count in pair_counts.items()
-                if (count / max(1, color_counts[pair[0]]) >= threshold / 100.0 or
-                    count / max(1, color_counts[pair[1]]) >= threshold / 100.0)
+                if relative_counts[pair] >= threshold / 100.0
             }
 
         elif method == "Percentile-based":
-            counts = np.array(list(pair_counts.values()))
-            t_val = np.percentile(counts, threshold)
+            relative_counts = GraphViewer.calculate_relative_adjacency(pair_counts, color_counts)
+            t_val = np.percentile(list(relative_counts.values()), threshold)
             return {pair: count for pair, count in pair_counts.items()
-                    if count >= t_val}
+                    if relative_counts[pair] >= t_val}
+
 
         raise ValueError(f"Unknown spatial filtering method: {method}")
 
+    @staticmethod
+    def calculate_relative_adjacency(pair_counts, color_counts):
+        return {
+            pair: max(
+                count / max(1, color_counts[pair[0]]),
+                count / max(1, color_counts[pair[1]])
+            )
+            for pair, count in pair_counts.items()
+        }
 
     def display_graph(self, graph):
         fig, ax = plt.subplots(figsize=(6, 6))
