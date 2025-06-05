@@ -46,7 +46,7 @@ class RampExtractionViewer(QWidget):
 
         # Create method dropdown
         self.extraction_method_selector = QComboBox()
-        self.extraction_method_selector.addItems(["Basic HSV", "Vector HSV", "CIEDE2000"])
+        self.extraction_method_selector.addItems(["Basic HSV", "CIEDE2000"])
         self.extraction_method_selector.currentTextChanged.connect(self.update_extraction_controls)
 
         method_dropdown_row = QWidget()
@@ -57,7 +57,6 @@ class RampExtractionViewer(QWidget):
 
         # Create all controls
         self.basic_controls = self._create_basic_hsv_controls()
-        self.vector_controls = self._create_vector_controls()
         self.ciede_controls = self._create_ciede_controls()
         self.max_length_label = QLabel("Max Ramp Length: 20")
         self.max_length_slider = QSlider(Qt.Orientation.Horizontal)
@@ -100,7 +99,6 @@ class RampExtractionViewer(QWidget):
         self.method_stack_layout.setContentsMargins(0, 0, 0, 0)
         self.method_stack_layout.setSpacing(10)
         self.method_stack_layout.addWidget(self.basic_controls)
-        self.method_stack_layout.addWidget(self.vector_controls)
         self.method_stack_layout.addWidget(self.ciede_controls)
         method_controls_layout.addWidget(self.method_stack)
 
@@ -359,14 +357,6 @@ class RampExtractionViewer(QWidget):
         min_slider.valueChanged.connect(lambda val: max_slider.setMinimum(val))
         max_slider.valueChanged.connect(lambda val: min_slider.setMaximum(val))
 
-    def _create_vector_controls(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.vector_angle_slider = self._create_slider("Angle Step Max (°)", 0, 180, 45, layout)
-        self.vector_magnitude_slider = self._create_slider("Step Magnitude Max", 0, 100, 45, layout)
-        return widget
-
     def _create_ciede_controls(self):
         self.delta_e_min_slider = None
         self.delta_e_max_slider = None
@@ -412,7 +402,6 @@ class RampExtractionViewer(QWidget):
     def update_extraction_controls(self):
         method = self.extraction_method_selector.currentText()
         self.basic_controls.setVisible(method == "Basic HSV")
-        self.vector_controls.setVisible(method == "Vector HSV")
         self.ciede_controls.setVisible(method == "CIEDE2000")
 
     def update_extract_button_state(self):
@@ -468,12 +457,6 @@ class RampExtractionViewer(QWidget):
                     self.s_monotony_checkbox.isChecked(),
                     self.v_monotony_checkbox.isChecked()
                 ]
-            }
-
-        elif method == "Vector HSV":
-            return {
-                'angle_tolerance_deg': self.vector_angle_slider.value(),
-                'max_step_size': self.vector_magnitude_slider.value() / 100.0
             }
         elif method == "CIEDE2000":
             return {
@@ -635,10 +618,6 @@ class RampExtractionViewer(QWidget):
 
         if method == "Basic HSV":
             return RampExtractionViewer._is_valid_ramp_hsv(colors, params)
-
-        elif method == "Vector HSV":
-            return RampExtractionViewer._is_valid_ramp_vector_hsv(colors, params)
-
         elif method == "CIEDE2000":
             return RampExtractionViewer.is_valid_ramp_ciede2000(colors, params)
 
@@ -672,32 +651,6 @@ class RampExtractionViewer(QWidget):
                 signs = np.sign(component_diffs)
                 if not (np.all(signs >= 0) or np.all(signs <= 0)):
                     return False
-
-        return True
-
-    @staticmethod
-    def _is_valid_ramp_vector_hsv(path, params):
-        vectors = hsv_diffs(path)
-        step_magnitudes = np.linalg.norm(vectors, axis=1)
-
-        if np.any(step_magnitudes > params.get('max_step_size', 1.0)):
-            return False
-
-        angle_tolerance_rad = np.radians(params.get('angle_tolerance_deg', 15))
-
-        for i in range(len(vectors) - 1):
-            v1 = vectors[i]
-            v2 = vectors[i + 1]
-            dot = np.dot(v1, v2)
-            norm_product = np.linalg.norm(v1) * np.linalg.norm(v2)
-
-            if norm_product < 0.001:
-                continue  # Skip near-zero vectors
-
-            angle = np.arccos(np.clip(dot / norm_product, -1.0, 1.0))
-
-            if angle > angle_tolerance_rad:
-                return False
 
         return True
 
