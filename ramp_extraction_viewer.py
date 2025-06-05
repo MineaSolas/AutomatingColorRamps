@@ -421,18 +421,76 @@ class RampExtractionViewer(QWidget):
         skip_permutations = self.skip_permutations_checkbox.isChecked()
         max_ramp_length = self.max_length_slider.value()
 
+        # First get all ramps without any filtering
         ramps = self.find_color_ramps(
             graph, method, params,
-            max_length=max_ramp_length,
-            skip_subsequences=skip_subsequences,
-            skip_reverse=skip_reverse,
-            skip_permutations=skip_permutations
+            max_length=max_ramp_length
         )
 
-        if len(ramps) > 2 and remove_similar:
-            ramps = self.remove_similar_ramps(ramps)
+        # Calculate smoothness for each ramp
+        ramp_scores = [(ramp, self.evaluate_ramp_smoothness(ramp)[0]) for ramp in ramps]
 
-        self.display_color_ramps(ramps)
+        # Filter based on permutations if enabled
+        if skip_permutations:
+            # Group ramps by their set of colors
+            perm_groups = {}
+            for ramp, score in ramp_scores:
+                color_set = frozenset(ramp)
+                if color_set not in perm_groups:
+                    perm_groups[color_set] = []
+                perm_groups[color_set].append((ramp, score))
+
+            # Keep only the best scoring ramp from each permutation group
+            ramp_scores = [max(group, key=lambda x: x[1])
+                           for group in perm_groups.values()]
+
+        # Filter based on reverses if enabled (and permutations are not)
+        if skip_reverse and not skip_permutations:
+            # Group ramps with their reverses
+            processed = set()
+            filtered_scores = []
+            for ramp, score in ramp_scores:
+                if tuple(ramp) in processed:
+                    continue
+
+                reverse = tuple(reversed(ramp))
+                processed.add(tuple(ramp))
+                processed.add(reverse)
+
+                # Find scores for both original and reverse
+                reverse_score = next((s for r, s in ramp_scores if tuple(r) == reverse), None)
+                if reverse_score is not None:
+                    # Keep the better scoring version
+                    if score >= reverse_score:
+                        filtered_scores.append((ramp, score))
+                    else:
+                        filtered_scores.append((list(reverse), reverse_score))
+                else:
+                    filtered_scores.append((ramp, score))
+
+            ramp_scores = filtered_scores
+
+        # Filter subsequences if enabled
+        if skip_subsequences:
+            # Sort by score (descending) and length (descending) for stable results
+            ramp_scores.sort(key=lambda x: (-x[1], -len(x[0])))
+
+            filtered_scores = []
+            for ramp, score in ramp_scores:
+                # Check if this ramp is a subsequence of any already accepted ramp
+                if not self.is_subsequence_of_any(ramp, [r for r, _ in filtered_scores]):
+                    filtered_scores.append((ramp, score))
+
+            ramp_scores = filtered_scores
+
+        # Get final ramps sorted by score
+        final_ramps = [ramp for ramp, _ in sorted(ramp_scores, key=lambda x: -x[1])]
+
+        # Apply similarity filter if requested
+        if len(final_ramps) > 2 and remove_similar:
+            final_ramps = self.remove_similar_ramps(final_ramps)
+
+        self.display_color_ramps(final_ramps)
 
     def _get_extraction_params(self, method):
         if method == "Basic HSV":
@@ -565,13 +623,11 @@ class RampExtractionViewer(QWidget):
             if child.widget():
                 child.widget().deleteLater()
 
-    def find_color_ramps(self, graph, method="Basic HSV", params=None, max_length=20,
-                         skip_reverse=False, skip_subsequences=True, skip_permutations=True):
+    def find_color_ramps(self, graph, method="Basic HSV", params=None, max_length=20):
         if params is None:
             params = {}
 
         ramps = []
-
         sorted_nodes = sorted(
             graph.nodes,
             key=lambda color_id: color_to_hsv(global_color_manager.color_groups[color_id].current_color)[2]
@@ -602,12 +658,6 @@ class RampExtractionViewer(QWidget):
                             extended = True
 
                 if not extended and len(path) >= 3:
-                    if skip_permutations and any(set(path) == set(r) for r in ramps):
-                        continue
-                    if skip_subsequences and RampExtractionViewer.is_subsequence_of_any(path, ramps):
-                        continue
-                    if skip_reverse and any(path == list(reversed(r)) for r in ramps):
-                        continue
                     ramps.append(path)
 
         return ramps
@@ -690,8 +740,13 @@ class RampExtractionViewer(QWidget):
             v1 = vectors[i]
             v2 = vectors[i + 1]
 
-            # Calculate angle between vectors
-            cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+            norm_v1: float = float(np.linalg.norm(v1))
+            norm_v2: float = float(np.linalg.norm(v2))
+
+            if norm_v1 == 0.0 or norm_v2 == 0.0:
+                continue
+
+            cos_angle = np.dot(v1, v2) / (norm_v1 * norm_v2)
             angle = np.arccos(np.clip(cos_angle, -1.0, 1.0))
             angle_deg = np.degrees(angle)
 
