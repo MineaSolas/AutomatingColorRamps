@@ -73,7 +73,7 @@ class MainWindow(QMainWindow):
         gradient_layout.setContentsMargins(0, 0, 0, 0)
 
         self.gradient_style_combo = QComboBox()
-        self.gradient_style_combo.addItems(["No Propagation", "Scale & Shift", "Preserve Ratios"])
+        self.gradient_style_combo.addItems(["No Propagation", "Preserve Ratios"])
         self.gradient_style_combo.currentTextChanged.connect(self._on_preserve_style_changed)
         self.lock_ends_checkbox = QCheckBox("Lock Ramp Ends")
         self.lock_ends_checkbox.setChecked(False)
@@ -207,28 +207,7 @@ class MainWindow(QMainWindow):
                 new_hsv_ramp = list(hsv_ramp)
                 new_hsv_ramp[index] = (h1, s1, v1)
 
-            elif preserve_style == "Scale & Shift":
-                # Extract original S and V curves
-                orig_s = np.array([s for _, s, _ in hsv_ramp])
-                orig_v = np.array([v for _, _, v in hsv_ramp])
-                orig_h = np.array([h for h, _, _ in hsv_ramp])
 
-                # Target new HSV
-                h_target, s_target, v_target = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
-
-                # Morph S and V curves
-                new_s = self.morph_curve(orig_s, index, s_target, lock_ends)
-                new_v = self.morph_curve(orig_v, index, v_target, lock_ends)
-
-                # For hue, wrap delta as circular shift
-                delta_h = ((h_target - orig_h[index] + 0.5) % 1.0) - 0.5
-                new_h = (orig_h + delta_h) % 1.0
-                if lock_ends:
-                    new_h[0] = orig_h[0]
-                    new_h[-1] = orig_h[-1]
-
-                new_hsv_ramp = [(float(h), float(s), float(v)) for h, s, v in zip(new_h, new_s, new_v)]
-                new_hsv_ramp[index] = (h1, s1, v1)
 
             elif preserve_style == "Preserve Ratios":
                 new_hsv_ramp = []
@@ -243,20 +222,15 @@ class MainWindow(QMainWindow):
                         new_hsv_ramp.append((h, s, v))
                         continue
 
-                    # For locked ends, smoothly adjust the ratios based on position
-                    if lock_ends:
-                        # Who knows
-                        pass
-                    else:
-                        # Original ratio preservation for unlocked ends
-                        s_ratio = float(s / s0) if s0 else 1.0
-                        v_ratio = float(v / v0) if v0 else 1.0
-                        h_diff = float((h - h0 + 0.5) % 1.0 - 0.5)
-                        new_h = float((h1 + h_diff) % 1.0)
+                    # Original ratio preservation for unlocked ends
+                    s_ratio = float(s / s0) if s0 else 1.0
+                    v_ratio = float(v / v0) if v0 else 1.0
+                    h_diff = float((h - h0 + 0.5) % 1.0 - 0.5)
+                    new_h = float((h1 + h_diff) % 1.0)
 
                     # Apply the ratios
-                    new_s = float(max(0, min(1, s1 * s_ratio)))
-                    new_v = float(max(0, min(1, v1 * v_ratio)))
+                    new_s = float(max(0.0, min(1.0, s1 * s_ratio)))
+                    new_v = float(max(0.0, min(1.0, v1 * v_ratio)))
 
                     new_hsv_ramp.append((new_h, new_s, new_v))
 

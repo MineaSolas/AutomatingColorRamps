@@ -428,7 +428,7 @@ class RampExtractionViewer(QWidget):
         )
 
         # Calculate smoothness for each ramp
-        ramp_scores = [(ramp, self.evaluate_ramp_smoothness(ramp)[0]) for ramp in ramps]
+        ramp_scores = [(ramp, self.evaluate_ramp_quality(ramp)['final_score']) for ramp in ramps]
 
         # Filter results
         if skip_permutations:
@@ -896,44 +896,126 @@ class RampExtractionViewer(QWidget):
         ramp_lengths = [len(r) for r in ramps]
 
         for ramp in ramps:
-            (score, _, _, _, _) = RampExtractionViewer.evaluate_ramp_smoothness(ramp, min(ramp_lengths))
+            score_info = RampExtractionViewer.evaluate_ramp_quality(ramp, min(ramp_lengths))
+            score = score_info['final_score']
             if score > best_score:
                 best_score = score
                 best_ramp = ramp
 
+
         return best_ramp
 
     @staticmethod
-    def evaluate_ramp_smoothness(ramp, min_length_in_cluster=3):
-        colors = [global_managers.global_color_manager.color_groups[color_id].current_color for color_id in ramp]
+    def evaluate_ramp_quality(ramp, min_length=3):
+
+        if len(ramp) < 2:
+            return 0.0, {"message": "Ramp too short"}
+
+        # Convert color IDs to actual colors if needed
+        colors = []
+        for color in ramp:
+            if isinstance(color, int):
+                # Get actual color from global color manager via color_utils
+                colors.append(global_managers.global_color_manager.color_groups[color].current_color)
+            else:
+                colors.append(color)
+
+
+        # Calculate CIEDE2000 differences between consecutive colors
+        steps = []
+        for i in range(len(colors) - 1):
+            color1 = colors[i]
+            color2 = colors[i + 1]
+
+            srgb1 = sRGBColor(*[x / 255.0 for x in color1[:3]])
+            srgb2 = sRGBColor(*[x / 255.0 for x in color2[:3]])
+            lab1 = convert_color(srgb1, LabColor)
+            lab2 = convert_color(srgb2, LabColor)
+
+            delta_e = ciede2000(
+                (lab1.lab_l, lab1.lab_a, lab1.lab_b),
+                (lab2.lab_l, lab2.lab_a, lab2.lab_b)
+            )['delta_E_00']
+
+            steps.append(delta_e)
+
+        # 1. Step size penalties
+        step_penalties = []
+        for step in steps:
+            if step < 10:
+                penalty = ((10 - step) / 10.0) ** 2
+
+            elif step > 50:
+                penalty = (step / 50.0) ** 2
+
+            else:
+                penalty = 0
+            step_penalties.append(penalty)
+
+        step_size_penalty = (np.sqrt(np.mean(np.array(step_penalties)))) if step_penalties else 0.0
+
+        # 2. Step consistency penalties
+        consistency_penalties = []
+        for i in range(len(steps) - 1):
+            diff = abs(steps[i] - steps[i + 1])
+            penalty = (diff / 10) ** 2
+            consistency_penalties.append(penalty)
+
+        step_consistency_penalty = (np.sqrt(np.mean(np.array(consistency_penalties)))) if consistency_penalties else 0.0
+
+        # 3. Monotony bonus using HSV
         diffs = hsv_diffs(colors)
-        step_sizes = np.linalg.norm(diffs, axis=1)
 
-        # Variance penalty
-        std_devs = np.std(diffs, axis=0)
-        variance_penalty = np.mean(std_devs)
+        # Get individual scores for each component
+        hue_score = RampExtractionViewer.get_monotony_score(diffs[:, 0])
+        sat_score = RampExtractionViewer.get_monotony_score(diffs[:, 1])
+        val_score = RampExtractionViewer.get_monotony_score(diffs[:, 2])
 
-        # Monotonicity score
-        monotonicity_count = sum(
-            RampExtractionViewer.is_monotonic_direction(diffs[:, i]) for i in range(3)
-        )
-        if monotonicity_count == 3:
-            monotonicity_score = 0.1
-        elif monotonicity_count == 2:
-            monotonicity_score = 0.05
-        else:
-            monotonicity_score = 0.01
+        monotony_score = (hue_score + sat_score + val_score)
 
-        # Step Size Penalty (penalize extremes)
-        preferred_center = 0.15
-        preferred_range = 0.15
-        penalty = np.mean(((step_sizes - preferred_center) / preferred_range) ** 2) * 0.2
+        # 4. Length bonus compared to min length in the group
+        length_bonus = (len(colors) - min_length)
 
-        length_boost = 0.01 * (len(ramp) - min_length_in_cluster)
+        step_size_penalty = step_size_penalty * 1
+        step_consistency_penalty = step_consistency_penalty * 1
+        monotony_score = monotony_score * 1
+        length_bonus = length_bonus * 0.05
 
-        final_score = - variance_penalty - penalty + length_boost + monotonicity_score
+        final_score = monotony_score + length_bonus - step_size_penalty - step_consistency_penalty
 
-        return final_score, variance_penalty, penalty, length_boost, monotonicity_score
+        return {
+            'step_size_penalty': step_size_penalty,
+            'step_consistency_penalty': step_consistency_penalty,
+            'monotony_score': monotony_score,
+            'length_bonus': length_bonus,
+            'final_score': final_score
+        }
+
+    @staticmethod
+    def count_direction_changes(diffs):
+        if len(diffs) < 2:
+            return 0
+
+        # Ignore very small changes to prevent noise
+        significant_diffs = diffs[np.abs(diffs) > 0.05]
+
+        if len(significant_diffs) < 2:
+            return 0
+
+        # Get signs of differences (+1 for positive, -1 for negative)
+        signs = np.sign(significant_diffs)
+
+        # Count how many times the sign changes
+        direction_changes = np.sum(np.abs(np.diff(signs)) == 2)  # diff of +1 to -1 or vice versa is 2
+
+        return direction_changes
+
+    @staticmethod
+    def get_monotony_score(diffs):
+        changes = RampExtractionViewer.count_direction_changes(diffs)
+        if changes > 2:
+            return 0
+        return 1.0 / (changes + 1)
 
     def show_ramp_clusters(self, ramps, labels):
         dialog = QDialog(self)
@@ -957,12 +1039,13 @@ class RampExtractionViewer(QWidget):
             ramp_lengths = [len(r) for r in candidate_ramps]
 
             # Compute goodness scores and factors
-            results = [self.evaluate_ramp_smoothness(ramp, min(ramp_lengths)) for ramp in candidate_ramps]
-            scores = [res[0] for res in results]
-            best_index = np.argmax(scores)
+            results = [self.evaluate_ramp_quality(ramp, min(ramp_lengths)) for ramp in candidate_ramps]
 
-            for idx_in_cluster, (ramp, (score, var_penalty, size_penalty, length_boost, mono_score)) in enumerate(
-                    zip(candidate_ramps, results)):
+            # Create pairs of (ramp, score) and sort by score
+            ramp_score_pairs = list(zip(candidate_ramps, results))
+            ramp_score_pairs.sort(key=lambda x: x[1]['final_score'], reverse=True)
+
+            for idx_in_cluster, (ramp, details) in enumerate(ramp_score_pairs):
                 row_widget = QWidget()
                 row_layout = QHBoxLayout(row_widget)
                 row_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -987,7 +1070,7 @@ class RampExtractionViewer(QWidget):
                 row_layout.addWidget(swatches_widget)
 
                 # Selection Label (Fixed Width)
-                is_selected = idx_in_cluster == best_index
+                is_selected = idx_in_cluster == 0
                 selected_label = QLabel("[Selected]" if is_selected else "")
                 selected_label.setStyleSheet("""
                     font-weight: bold; 
@@ -1005,11 +1088,11 @@ class RampExtractionViewer(QWidget):
 
                 factors_html = (
                     f"<span style='font-family: monospace;'>"
-                    f"Good: <span style='{factor_style}'>{score:.3f}</span>, "
-                    f"Var: <span style='{factor_style}'>-{var_penalty:.3f}</span>, "
-                    f"Siz: <span style='{factor_style}'>-{size_penalty:.3f}</span>, "
-                    f"Len: <span style='{factor_style}'>{length_boost:.2f}</span>, "
-                    f"Mon: <span style='{factor_style}'>{mono_score:.2f}</span>"
+                    f"Good: <span style='{factor_style}'>{details['final_score']:.3f}</span>, "
+                    f"Var: <span style='{factor_style}'>-{details['step_consistency_penalty']:.3f}</span>, "
+                    f"Siz: <span style='{factor_style}'>-{details['step_size_penalty']:.3f}</span>, "
+                    f"Len: <span style='{factor_style}'>{details['length_bonus']:.2f}</span>, "
+                    f"Mon: <span style='{factor_style}'>{details['monotony_score']:.2f}</span>"
                     f"</span>"
                 )
 
