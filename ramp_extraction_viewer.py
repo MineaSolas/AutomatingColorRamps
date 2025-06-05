@@ -368,12 +368,35 @@ class RampExtractionViewer(QWidget):
         return widget
 
     def _create_ciede_controls(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
+        self.delta_e_min_slider = None
+        self.delta_e_max_slider = None
+
+        controls = QWidget()
+        layout = QVBoxLayout(controls)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.delta_e_slider = self._create_slider("ΔE2000 Step Max", 0, 50, 40, layout)
-        self.delta_e_var_slider = self._create_slider("ΔE2000 Variance Tolerance", 0, 30, 15, layout)
-        return widget
+        layout.setSpacing(5)
+
+        # Add ΔE min/max sliders
+        self._add_min_max_sliders(
+            min_val=1,
+            max_val=100,
+            min_default=5,
+            max_default=30,
+            min_attr_name="delta_e_min_slider",
+            max_attr_name="delta_e_max_slider",
+            parent_layout=layout
+        )
+
+        # ΔE Variance Tolerance
+        self.delta_e_tol_slider = self._create_slider("Step Variance Max", 1, 50, 10, layout)
+        layout.addWidget(self.delta_e_tol_slider)
+
+        # Direction Angle
+        self.angle_tolerance_slider = self._create_slider("Direction Angle Tolerance (°)", 1, 180, 45, layout)
+        layout.addWidget(self.angle_tolerance_slider)
+
+        controls.setVisible(False)
+        return controls
 
     @staticmethod
     def _create_slider(label_text, min_val, max_val, default, layout):
@@ -454,9 +477,12 @@ class RampExtractionViewer(QWidget):
             }
         elif method == "CIEDE2000":
             return {
-                'max_delta_e': self.delta_e_slider.value(),
-                'variance_tolerance': self.delta_e_var_slider.value()
+                'min_step': self.delta_e_min_slider.value(),
+                'max_step': self.delta_e_max_slider.value(),
+                'step_tolerance': self.delta_e_tol_slider.value(),
+                'angle_tolerance': self.angle_tolerance_slider.value()
             }
+
         return {}
 
     def display_color_ramps(self, ramps):
@@ -676,34 +702,47 @@ class RampExtractionViewer(QWidget):
         return True
 
     @staticmethod
-    def is_valid_ramp_ciede2000(path, params):
-        max_delta_e = params.get('max_delta_e', 5.0)  # Typical perceptibility threshold
-        variance_tolerance = params.get('variance_tolerance', 2.0)  # Allowed ΔE variance between steps
-
+    def is_valid_ramp_ciede2000(colors, params):
         # Convert RGB to Lab for all colors in the path
         lab_colors = []
-        for color in path:
+        for color in colors:
             srgb = sRGBColor(*[c / 255.0 for c in color[:3]])
             lab = convert_color(srgb, LabColor)
             lab_colors.append((lab.lab_l, lab.lab_a, lab.lab_b))
+        lab_array = np.array(lab_colors)
 
-        # Compute ΔE between consecutive steps
-        delta_e_steps = [
-            ciede2000(lab_colors[i], lab_colors[i+1])['delta_E_00']
-            for i in range(len(lab_colors) - 1)
-        ]
+        # Calculate vectors between consecutive colors
+        vectors = np.diff(lab_array, axis=0)  # Shape: (n-1, 3)
 
-        # if not RampExtractionViewer.is_monotonic_delta_e(delta_e_steps):
-        #     return False
+        # Calculate CIEDE2000 differences between consecutive colors
+        delta_e_steps = []
+        for i in range(len(lab_colors) - 1):
+            delta_e = ciede2000(lab_colors[i], lab_colors[i + 1])['delta_E_00']
+            delta_e_steps.append(delta_e)
 
-        # Check max ΔE threshold
-        if any(de > max_delta_e for de in delta_e_steps):
+        delta_e_steps = np.array(delta_e_steps)
+
+        # Check min/max step sizes
+        if np.any(delta_e_steps < params['min_step']) or np.any(delta_e_steps > params['max_step']):
             return False
 
-        # Check variance in ΔE between steps
+        # Check step consistency
         if len(delta_e_steps) > 1:
-            diffs = np.abs(np.diff(delta_e_steps))
-            if np.any(diffs > variance_tolerance):
+            step_differences = np.abs(delta_e_steps[1:] - delta_e_steps[:-1])
+            if np.any(step_differences > params['step_tolerance']):
+                return False
+
+        # Check direction consistency in LCH space
+        for i in range(len(vectors) - 1):
+            v1 = vectors[i]
+            v2 = vectors[i + 1]
+
+            # Calculate angle between vectors
+            cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+            angle = np.arccos(np.clip(cos_angle, -1.0, 1.0))
+            angle_deg = np.degrees(angle)
+
+            if angle_deg > params['angle_tolerance']:
                 return False
 
         return True
