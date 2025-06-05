@@ -1,5 +1,5 @@
 from PyQt6 import QtCore
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QSizePolicy, QScrollArea
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QSizePolicy, QScrollArea, QFileDialog
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QImage, QColor
 import numpy as np
@@ -26,9 +26,17 @@ class ImageViewer(QWidget):
         self.layout = QVBoxLayout(self)
 
         if show_load_button:
+            button_layout = QHBoxLayout()
             self.loadButton = QPushButton("Load Image")
             self.loadButton.clicked.connect(self.load_image)
-            self.layout.addWidget(self.loadButton)
+            button_layout.addWidget(self.loadButton)
+        
+            self.saveAsButton = QPushButton("Save As")
+            self.saveAsButton.clicked.connect(self.save_image_as)
+            self.saveAsButton.setEnabled(False)  # Initially disabled
+            button_layout.addWidget(self.saveAsButton)
+        
+            self.layout.addLayout(button_layout)
 
         self.scrollArea = QScrollArea()
         self.scrollArea.setWidgetResizable(False)
@@ -112,7 +120,7 @@ class ImageViewer(QWidget):
                 file_path, _ = QFileDialog.getOpenFileName(self, "Open Image", "", "Images (*.png *.jpg *.bmp)")
                 if not file_path:
                     return
-            self.original_pixmap = QPixmap(file_path)
+        self.original_pixmap = QPixmap(file_path)
 
         self.current_image_path = file_path
 
@@ -125,6 +133,7 @@ class ImageViewer(QWidget):
             self.update_image()
             global_selection_manager.clear_selection()
             self.reset_color_details()
+            self.saveAsButton.setEnabled(True)
 
     def replace_color(self, color_id, new_color):
         if self.original_pixmap is None or color_id not in global_color_manager.color_groups:
@@ -292,3 +301,33 @@ class ImageViewer(QWidget):
             global_selection_manager.unregister_listener(self.on_selection_change)
         except:
             pass
+
+    def save_image_as(self):
+        if not self.original_pixmap:
+            return
+        
+        # Generate suggested filename based on the original
+        suggested_name = "modified_image.png"
+        if self.current_image_path:
+            # Get the original filename and directory
+            import os
+            original_dir = os.path.dirname(self.current_image_path)
+            original_name = os.path.basename(self.current_image_path)
+            # Insert '_modified' before the extension
+            name, ext = os.path.splitext(original_name)
+            suggested_name = os.path.join(original_dir, f"{name}_modified{ext}")
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Image As",
+            suggested_name,
+            "Images (*.png *.jpg *.bmp)"
+        )
+        
+        if file_path:
+            # Convert the current image array to QImage and save
+            img = QImage(self.image_array.data,
+                        self.image_array.shape[1],
+                        self.image_array.shape[0],
+                        QImage.Format.Format_RGBA8888)
+            img.save(file_path)
