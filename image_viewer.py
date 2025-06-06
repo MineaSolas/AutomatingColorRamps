@@ -18,6 +18,7 @@ class ImageViewer(QWidget):
         self.current_image_path = None
         self.palette_square_size = palette_square_size
         self.show_color_details = show_color_details
+        self.show_load_button = show_load_button
         self.image_array = None
         self._setup_ui(show_load_button)
         global_selection_manager.register_listener(self.on_selection_change)
@@ -120,7 +121,7 @@ class ImageViewer(QWidget):
                 file_path, _ = QFileDialog.getOpenFileName(self, "Open Image", "", "Images (*.png *.jpg *.bmp)")
                 if not file_path:
                     return
-        self.original_pixmap = QPixmap(file_path)
+            self.original_pixmap = QPixmap(file_path)
 
         self.current_image_path = file_path
 
@@ -133,7 +134,9 @@ class ImageViewer(QWidget):
             self.update_image()
             global_selection_manager.clear_selection()
             self.reset_color_details()
-            self.saveAsButton.setEnabled(True)
+
+            if self.show_load_button:
+                self.saveAsButton.setEnabled(True)
 
     def replace_color(self, color_id, new_color):
         if self.original_pixmap is None or color_id not in global_color_manager.color_groups:

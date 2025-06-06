@@ -174,9 +174,24 @@ class MainWindow(QMainWindow):
             if new_color == current_color:
                 return
 
-        is_gradient_mode = self.gradient_mode_radio.isChecked()
+        # Check if color is part of any ramp
+        ramps = global_ramp_manager.get_ramps()
+        color_in_ramp = False
+        for ramp in ramps:
+            if selected_color_id in ramp:
+                color_in_ramp = True
+                break
+
+        if not ramps or not color_in_ramp:
+            # Simply update the color if it's not part of any ramp
+            global_color_manager.set_color(selected_color_id, (r, g, b, current_color[3]))
+            self.viewer.replace_color(selected_color_id, (r, g, b, current_color[3]))
+            color_groups = global_color_manager.get_color_groups()
+            self.viewer.color_palette.populate(color_groups, square_size=self.viewer.palette_square_size, sort=False)
+            global_selection_manager.select_color_id(selected_color_id)
+            return
+
         preserve_style = self.gradient_style_combo.currentText()
-        lock_ends = self.lock_ends_checkbox.isChecked()
 
         # Save original ramp state if first edit since selection
         if selected_color_id != self._last_selected_id:
@@ -208,18 +223,12 @@ class MainWindow(QMainWindow):
                 new_hsv_ramp[index] = (h1, s1, v1)
 
 
-
             elif preserve_style == "Preserve Ratios":
                 new_hsv_ramp = []
                 for j, (h, s, v) in enumerate(hsv_ramp):
                     # Skip if this is the changed color
                     if j == index:
                         new_hsv_ramp.append((h1, s1, v1))
-                        continue
-
-                    # Skip if it's a locked end
-                    if lock_ends and (j == 0 or j == len(hsv_ramp) - 1):
-                        new_hsv_ramp.append((h, s, v))
                         continue
 
                     # Original ratio preservation for unlocked ends
