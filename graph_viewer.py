@@ -9,7 +9,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib import pyplot as plt
 
 from color_utils import extract_adjacent_color_pairs, is_similar_hsv, is_similar_ciede2000
-from global_managers import global_color_manager
+from global_managers import global_color_manager, global_ramp_manager
 
 
 class GraphViewer(QWidget):
@@ -299,6 +299,41 @@ class GraphViewer(QWidget):
             raise ValueError(f"Unknown graph type: {graph_type}")
 
         self.color_graph = graph
+        
+        # Count total edges and mark relevant ones
+        total_edges = len(graph.edges)
+        
+        # Add relevance attribute to edges
+        ramps = global_ramp_manager.get_ramps()
+        if ramps:
+            relevant_edges = 0
+            for edge in graph.edges:
+                # Check if these color IDs are neighbors in any ramp
+                is_relevant = False
+                for ramp in ramps:
+                    # Check if color IDs are adjacent in the ramp
+                    for i in range(len(ramp) - 1):
+                        if (ramp[i] == edge[0] and ramp[i + 1] == edge[1]) or \
+                           (ramp[i] == edge[1] and ramp[i + 1] == edge[0]):
+                            is_relevant = True
+                            break
+                    if is_relevant:
+                        break
+
+                # Store the relevance as an edge attribute
+                graph.edges[edge]['relevant'] = is_relevant
+                if is_relevant:
+                    relevant_edges += 1
+        
+            print(f"Total edges: {total_edges}")
+            print(f"Relevant edges: {relevant_edges}")
+            print(f"Irrelevant edges: {total_edges - relevant_edges}")
+        else:
+            # If no ramps, mark all edges as relevant
+            for edge in graph.edges:
+                graph.edges[edge]['relevant'] = True
+            print(f"Total edges: {total_edges}")
+
         self.display_graph(graph)
         self.graph_updated.emit()
 
@@ -307,6 +342,13 @@ class GraphViewer(QWidget):
 
         method = self.spatial_method_selector.currentText()
         threshold = self.spatial_threshold_slider.value()
+
+        if method == "Percentile-based":
+            print(f"Percentile: {threshold}%")
+        elif method == "Relative to color frequency":
+            print(f"Relative Adjacency: ≥ {threshold / 100:.2f}")
+        elif method == "Absolute":
+            print(f"Occurrences: ≥ {threshold}")
 
         filtered_pairs = self.filter_adjacency_pairs(
             self._cached_adjacency_pairs,
@@ -331,6 +373,10 @@ class GraphViewer(QWidget):
             hue_thresh = self.hue_slider.value()
             sat_thresh = self.sat_slider.value() / 100.0
             val_thresh = self.val_slider.value() / 100.0
+            print(f"Hue diff: ≤ {hue_thresh}°")
+            print(f"Sat diff: ≤ {sat_thresh:.2f}")
+            print(f"Val diff: ≤ {val_thresh:.2f}")
+
             valid_pairs = [
                 (c1_id, c2_id) for c1_id, c2_id in self._cached_similarity_pairs
                 if is_similar_hsv(
@@ -340,6 +386,7 @@ class GraphViewer(QWidget):
                 )
             ]
         elif method == "CIEDE2000":
+            print(f"ΔE Similarity: ≤ {threshold}")
             valid_pairs = [
                 (c1_id, c2_id) for c1_id, c2_id in self._cached_similarity_pairs
                 if is_similar_ciede2000(
@@ -445,14 +492,31 @@ class GraphViewer(QWidget):
             ax=ax
         )
 
-        # Draw edges
-        nx.draw_networkx_edges(
-            graph, pos,
-            width=1.5,
-            alpha=0.6,
-            edge_color="gray",
-            ax=ax
-        )
+        # Separate relevant and irrelevant edges
+        relevant_edges = [(u, v) for (u, v) in graph.edges if graph.edges[(u, v)]['relevant']]
+        irrelevant_edges = [(u, v) for (u, v) in graph.edges if not graph.edges[(u, v)]['relevant']]
+
+        # Draw relevant edges in green
+        if relevant_edges:
+            nx.draw_networkx_edges(
+                graph, pos,
+                edgelist=relevant_edges,
+                edge_color='green',
+                width=1.5,
+                alpha=0.6,
+                ax=ax
+            )
+
+        # Draw irrelevant edges in red
+        if irrelevant_edges:
+            nx.draw_networkx_edges(
+                graph, pos,
+                edgelist=irrelevant_edges,
+                edge_color='red',
+                width=1.5,
+                alpha=0.6,
+                ax=ax
+            )
 
         ax.set_axis_off()
         plt.close(fig)
@@ -499,20 +563,41 @@ class GraphViewer(QWidget):
             r, g, b, a = color
             node_colors.append(f"#{r:02X}{g:02X}{b:02X}")
 
-        # Draw nodes and edges
+        # Draw nodes
         nx.draw_networkx_nodes(
             self.color_graph, pos,
             node_size=1000,  # Larger nodes for better visibility
             node_color=node_colors,
             ax=ax
         )
-        nx.draw_networkx_edges(
-            self.color_graph, pos,
-            width=2.0,
-            alpha=0.6,
-            edge_color="gray",
-            ax=ax
-        )
+
+        # Separate relevant and irrelevant edges
+        relevant_edges = [(u, v) for (u, v) in self.color_graph.edges 
+                     if self.color_graph.edges[(u, v)]['relevant']]
+        irrelevant_edges = [(u, v) for (u, v) in self.color_graph.edges 
+                       if not self.color_graph.edges[(u, v)]['relevant']]
+
+        # Draw relevant edges in green
+        if relevant_edges:
+            nx.draw_networkx_edges(
+                self.color_graph, pos,
+                edgelist=relevant_edges,
+                edge_color='green',
+                width=2.0,
+                alpha=0.6,
+                ax=ax
+            )
+
+        # Draw irrelevant edges in red
+        if irrelevant_edges:
+            nx.draw_networkx_edges(
+                self.color_graph, pos,
+                edgelist=irrelevant_edges,
+                edge_color='red',
+                width=2.0,
+                alpha=0.6,
+                ax=ax
+            )
 
         ax.set_axis_off()
         plt.close(fig)
