@@ -23,6 +23,7 @@ class GraphViewer(QWidget):
 
         self.color_graph = None
         self.use_8_neighbors = False
+        self.graph_window = None  # Add this line to store the window reference
 
         self._cached_adjacency_pairs = None
         self._cached_color_counts = None
@@ -458,6 +459,9 @@ class GraphViewer(QWidget):
 
         canvas = FigureCanvas(fig)
         canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        
+        # Add double-click event handler
+        canvas.mouseDoubleClickEvent = lambda event: self.open_graph_in_new_window()
 
         holder_layout = self.graph_canvas_holder.layout()
         if not holder_layout:
@@ -473,6 +477,53 @@ class GraphViewer(QWidget):
 
         holder_layout.addWidget(canvas)
 
+    def open_graph_in_new_window(self):
+        if not self.color_graph:
+            return
+
+        # Create a new window and store the reference
+        self.graph_window = QWidget()
+        self.graph_window.setWindowTitle("Graph Visualization")
+        self.graph_window.resize(800, 800)
+        layout = QVBoxLayout(self.graph_window)
+
+        # Create a larger figure for the new window
+        fig, ax = plt.subplots(figsize=(12, 12))
+        pos = nx.spring_layout(self.color_graph, k=0.5)
+        pos = self.perturb_positions(pos)
+
+        # Create node colors list
+        node_colors = []
+        for node in self.color_graph.nodes:
+            color = global_color_manager.color_groups[node].current_color
+            r, g, b, a = color
+            node_colors.append(f"#{r:02X}{g:02X}{b:02X}")
+
+        # Draw nodes and edges
+        nx.draw_networkx_nodes(
+            self.color_graph, pos,
+            node_size=1000,  # Larger nodes for better visibility
+            node_color=node_colors,
+            ax=ax
+        )
+        nx.draw_networkx_edges(
+            self.color_graph, pos,
+            width=2.0,
+            alpha=0.6,
+            edge_color="gray",
+            ax=ax
+        )
+
+        ax.set_axis_off()
+        plt.close(fig)
+
+        # Create and add canvas to the window
+        canvas = FigureCanvas(fig)
+        layout.addWidget(canvas)
+
+        # Show the window
+        self.graph_window.show()
+        
     @staticmethod
     def perturb_positions(pos, epsilon=0.1, precision=4):
         seen = {}
