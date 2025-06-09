@@ -451,12 +451,16 @@ class RampExtractionViewer(QWidget):
         # Sort by score (descending) and length (descending) for stable results
         ramp_scores.sort(key=lambda x: (-x[1], -len(x[0])))
         filtered_scores = []
-        for ramp, score in ramp_scores:
-            # Check if this ramp is a subsequence of any already accepted ramp
-            if not RampExtractionViewer.is_subsequence_of_any(ramp, [r for r, _ in filtered_scores]):
+        all_ramps = [r for r, _ in ramp_scores]  # Keep all ramps for checking
+
+        for i, (ramp, score) in enumerate(ramp_scores):
+            # Create list of all other ramps (excluding current one)
+            other_ramps = all_ramps[:i] + all_ramps[i + 1:]
+            # Only keep ramp if it's not a subsequence of any other ramp
+            if not RampExtractionViewer.is_subsequence_of_any(ramp, other_ramps):
                 filtered_scores.append((ramp, score))
-        ramp_scores = filtered_scores
-        return ramp_scores
+
+        return filtered_scores
 
     @staticmethod
     def _remove_reverses(ramp_scores):
