@@ -464,13 +464,15 @@ class GraphViewer(QWidget):
 
     @staticmethod
     def calculate_relative_adjacency(pair_counts, color_counts):
-        return {
+        adjacency = {
             pair: max(
                 count / max(1, color_counts[pair[0]]),
                 count / max(1, color_counts[pair[1]])
             )
             for pair, count in pair_counts.items()
         }
+        ## print("Adjacency values:", adjacency)
+        return adjacency
 
     def display_graph(self, graph):
         fig, ax = plt.subplots(figsize=(6, 6))

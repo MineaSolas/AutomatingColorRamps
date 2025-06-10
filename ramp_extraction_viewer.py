@@ -12,7 +12,7 @@ from pyciede2000 import ciede2000
 from sklearn.cluster import AgglomerativeClustering
 
 import global_managers
-from color_utils import color_to_hsv, hsv_diffs, is_similar_hsv
+from color_utils import color_to_hsv, hsv_diffs, is_similar_hsv, is_similar_ciede2000
 from global_managers import global_selection_manager, global_ramp_manager, global_color_manager
 from palette import ColorRamp, ColorPalette
 from ui_helpers import VerticalLabel
@@ -127,6 +127,7 @@ class RampExtractionViewer(QWidget):
         self.ramps_layout = QVBoxLayout(self.ramp_container)
         self.ramps_layout.setSpacing(1)
         self.ramps_layout.setContentsMargins(10, 10, 10, 10)
+        self.ramps_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.ramps_scroll_area.setWidget(self.ramp_container)
 
         self.ramp_preview_container = QWidget()
@@ -146,6 +147,7 @@ class RampExtractionViewer(QWidget):
         self.final_ramps_layout = QVBoxLayout(self.final_ramp_container)
         self.final_ramps_layout.setSpacing(1)
         self.final_ramps_layout.setContentsMargins(10, 10, 10, 10)
+        self.final_ramps_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.final_ramps_scroll_area.setWidget(self.final_ramp_container)
 
         # Overlay container
@@ -431,14 +433,14 @@ class RampExtractionViewer(QWidget):
         ramp_scores = [(ramp, self.evaluate_ramp_quality(ramp)['final_score']) for ramp in ramps]
 
         # Filter results
+        if skip_subsequences:
+            ramp_scores = self._remove_subsequences(ramp_scores)
+
         if skip_permutations:
             ramp_scores = self._remove_permutations(ramp_scores)
 
         if skip_reverse and not skip_permutations:
             ramp_scores = self._remove_reverses(ramp_scores)
-
-        if skip_subsequences:
-            ramp_scores = self._remove_subsequences(ramp_scores)
 
         final_ramps = [ramp for ramp, _ in ramp_scores]
         if len(final_ramps) > 2 and remove_similar:
@@ -796,10 +798,11 @@ class RampExtractionViewer(QWidget):
 
         for ramp in ramps:
             ramp_length = len(ramp)
-            if ramp_length < candidate_length:
+            if ramp_length <= candidate_length:
                 continue
             for i in range(ramp_length - candidate_length + 1):
                 if ramp[i:i + candidate_length] == candidate or ramp[i:i + candidate_length] == reversed_candidate:
+                ## if ramp[i:i + candidate_length] == candidate:
                     return True
         return False
 
@@ -816,12 +819,7 @@ class RampExtractionViewer(QWidget):
             for j in range(i + 1, n):
                 pair_count += 1
                 self.update_progress("Computing Distances...", pair_count, total_pairs)
-                dist = RampExtractionViewer.ramp_edit_distance(
-                    ramps[i], ramps[j],
-                    swap_cost=0.5,
-                    insertion_cost=1.0,
-                    permutation_penalty=0.0
-                )
+                dist = RampExtractionViewer.ramp_edit_distance(ramps[i], ramps[j])
                 distance_matrix[i, j] = dist
                 distance_matrix[j, i] = dist
 
@@ -851,9 +849,7 @@ class RampExtractionViewer(QWidget):
         return final_ramps
 
     @staticmethod
-    def ramp_edit_distance(r1, r2, similarity_hsv_params=None, swap_cost=0.5, insertion_cost=1.0, substitution_cost=1.0, permutation_penalty=0.0):
-        if similarity_hsv_params is None:
-            similarity_hsv_params = {'hue_threshold': 15, 'sat_threshold': 0.1, 'val_threshold': 0.1}
+    def ramp_edit_distance(r1, r2, similarity_threshold=10, swap_cost=0.5, insertion_cost=1.0, substitution_cost=1.0, permutation_cost=0.0):
 
         # Convert color IDs to actual colors
         r1_colors = [global_color_manager.color_groups[color_id].current_color for color_id in r1]
@@ -861,7 +857,7 @@ class RampExtractionViewer(QWidget):
 
         # Quick check: same colors, just reordered
         if set(r1) == set(r2):
-            return permutation_penalty
+            return permutation_cost
 
         len_r1, len_r2 = len(r1), len(r2)
         dp = np.zeros((len_r1 + 1, len_r2 + 1))
@@ -875,7 +871,7 @@ class RampExtractionViewer(QWidget):
             for j in range(1, len_r2 + 1):
                 c1, c2 = r1_colors[i - 1], r2_colors[j - 1]
 
-                if is_similar_hsv(c1, c2, **similarity_hsv_params):
+                if is_similar_ciede2000(c1, c2, similarity_threshold):
                     subst_cost = 0
                 else:
                     subst_cost = substitution_cost
