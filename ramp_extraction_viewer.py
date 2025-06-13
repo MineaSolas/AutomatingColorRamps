@@ -539,6 +539,8 @@ class RampExtractionViewer(QWidget):
         return {}
 
     def display_color_ramps(self, ramps):
+        print("Candidate Ramps:", len(ramps))
+
         self.generated_ramps = ramps
         self.clear_layout(self.ramps_layout)
         self.generated_ramp_widgets.clear()
@@ -1031,7 +1033,7 @@ class RampExtractionViewer(QWidget):
 
         for cluster_id in unique_labels:
             cluster_label = QLabel(f"Cluster {cluster_id + 1}")
-            cluster_label.setStyleSheet("font-weight: bold; font-size: 14px; margin-top: 10px;")
+            cluster_label.setStyleSheet("font-weight: bold; font-size: 14px; margin-top: 10px;  font-family: 'Courier New';")
             layout.addWidget(cluster_label)
 
             ramp_indices = np.where(labels == cluster_id)[0]
@@ -1075,7 +1077,7 @@ class RampExtractionViewer(QWidget):
                 selected_label.setStyleSheet("""
                     font-weight: bold; 
                     color: green;
-                    font-family: monospace;
+                     font-family: 'Courier New';
                 """)
                 row_layout.addWidget(selected_label)
                 row_layout.addStretch()
